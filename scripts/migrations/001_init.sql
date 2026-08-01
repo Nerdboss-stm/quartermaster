@@ -1,0 +1,1 @@
+-- 001_init: intentionally empty; schema arrives with product code.

@@ -55,9 +55,12 @@ export default function Nav({
       </div>
 
       <div className="border-t border-neutral-800 px-4 py-3">
-        <p className="truncate font-sans text-[12px] text-neutral-300">
+        <Link
+          href="/app/settings"
+          className="block truncate font-sans text-[12px] text-neutral-300 hover:text-neutral-100"
+        >
           {displayName}
-        </p>
+        </Link>
         <button
           onClick={signOut}
           className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-neutral-600 hover:text-neutral-300"

@@ -108,6 +108,58 @@ export async function storeEnvelope(
   return row;
 }
 
+/** The next unused single-letter label for this account. */
+async function nextLabel(ownerId: string): Promise<string> {
+  const rows = await sqlAll<{ label: string }>(
+    "SELECT label FROM envelopes WHERE owner_id = ?",
+    [ownerId]
+  );
+  const taken = new Set(rows.map((r) => r.label));
+  for (let i = 0; i < 26; i++) {
+    const label = String.fromCharCode(65 + i);
+    if (!taken.has(label)) return label;
+  }
+  return `E${rows.length + 1}`;
+}
+
+/**
+ * Import every approved envelope this account has at Prava that we do not
+ * already hold.
+ *
+ * Approval happens in Prava's window, on whatever device the owner
+ * happens to be holding, and we are told about it by a redirect that may
+ * never reach the tab that started it. So discovery cannot live in a
+ * polling loop in one browser tab: closing it, refreshing it, or finishing
+ * the passkey on a phone all used to lose the envelope entirely — the
+ * money was approved and the product acted as though it never happened.
+ *
+ * This runs on the page that shows envelopes, so simply looking at
+ * Spending power is enough to pick up anything that was approved. It is
+ * idempotent: mandates already stored are skipped by id.
+ */
+export async function reconcileEnvelopes(
+  owner: UserRow
+): Promise<EnvelopeRow[]> {
+  const known = new Set(
+    (
+      await sqlAll<{ prava_mandate_id: string }>(
+        "SELECT prava_mandate_id FROM envelopes WHERE owner_id = ?",
+        [owner.id]
+      )
+    ).map((r) => r.prava_mandate_id)
+  );
+
+  const mandates = await prava().listMandates(owner.prava_customer_id);
+  const imported: EnvelopeRow[] = [];
+  for (const m of mandates) {
+    if (known.has(m.id)) continue;
+    if (m.status !== "active" && m.state !== "available") continue;
+    imported.push(await storeEnvelope(owner.id, await nextLabel(owner.id), m));
+    console.log(`envelope reconciled for ${owner.id}: ${m.id}`);
+  }
+  return imported;
+}
+
 export function cycleStartIso(env: EnvelopeRow): string {
   return new Date(Date.parse(env.renews_at) - 7 * 86_400_000).toISOString();
 }

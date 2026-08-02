@@ -207,11 +207,21 @@ export class PravaClient {
   }
 
   async listMandates(customerId: string): Promise<PravaMandate[]> {
-    const raw = await request<unknown>(
-      this.cfg,
-      "GET",
-      `/v1/mandates?customer_id=${encodeURIComponent(customerId)}&standing_only=true`
-    );
+    let raw: unknown;
+    try {
+      raw = await request<unknown>(
+        this.cfg,
+        "GET",
+        `/v1/mandates?customer_id=${encodeURIComponent(customerId)}&standing_only=true`
+      );
+    } catch (err) {
+      // A customer Prava has never seen 404s here. That is "no mandates
+      // yet", which is the normal state of every account before its first
+      // approval — not a failure to report. Any other status still throws,
+      // so a real outage is never mistaken for an empty portfolio.
+      if (err instanceof PravaError && err.status === 404) return [];
+      throw err;
+    }
     // VERIFY: list envelope shape; accept bare array or {mandates|data}.
     if (Array.isArray(raw)) return raw as PravaMandate[];
     const obj = raw as { mandates?: PravaMandate[]; data?: PravaMandate[] };

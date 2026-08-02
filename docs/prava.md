@@ -10193,6 +10193,16 @@ organized by card network. Sandbox only.
 > ## Documentation Index
 > Fetch the complete documentation index at: https://docs.prava.space/llms.txt
 > Use this file to discover all available pages before exploring further.
+## CARD EXHAUSTION (Aug 2, confirmed by Prava support)
+FETCH_AGENTIC_CREDS_ERROR ("Fetching cryptogram failed") on a charge
+means the TEST CARD is exhausted (per-card credential quota), NOT a
+mandate or code problem. The eleven cards above are shared across all
+teams and can be burned by others. USE THE TEAM-SPECIFIC CARD SENT BY
+EMAIL. New card = first-time flow (OTP 456789 + passkey registration):
+enroll BEFORE recording. Secondary confirmed bug: a FAILED charge does
+NOT clear its idempotency reference (retry same reference -> 409
+DUPLICATE_RESOURCE); our settlement suffixes retries (-r2, -r3).
+
 ## ENVELOPE MECHANICS VERIFIED (Jul 31, by hand)
 RULE (network-enforced): one charge per envelope per cycle. Second
 same-cycle charge -> status failed, errorCode DECLINED, message

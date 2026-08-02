@@ -16,6 +16,8 @@ const BUY = [
 
 const SELL = [{ href: "/app/listings", label: "My capacity" }];
 
+const BUILD = [{ href: "/app/developers", label: "Agent access" }];
+
 export default function Nav({
   displayName,
   pendingCount,
@@ -49,6 +51,7 @@ export default function Nav({
       <div className="flex-1 overflow-y-auto py-3">
         <Section label="Buy" items={BUY} pathname={pathname} badge={{ "/app/escalations": pendingCount }} />
         <Section label="Sell" items={SELL} pathname={pathname} />
+        <Section label="Build" items={BUILD} pathname={pathname} />
       </div>
 
       <div className="border-t border-neutral-800 px-4 py-3">

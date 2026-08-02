@@ -20,14 +20,36 @@ import {
  *  marker: recorded pace, honestly annotated, never invented. */
 const REPLAY_GAP_CAP_MS = 4000;
 
+/** Routes report failures as {code, message} or as a bare string; render
+ *  whichever arrived rather than "[object Object]". */
+function errorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const e = error as { code?: string; message?: string };
+    if (e.message) return e.code ? `${e.code}: ${e.message}` : e.message;
+  }
+  return fallback;
+}
+
+/** The operator carries the demo token in the URL (?token=...). Forward it,
+ *  or every money-moving control is refused on a hosted deployment. */
+function demoToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("token");
+}
+
 async function demo(action: string, extra: Record<string, unknown> = {}) {
+  const token = demoToken();
   const res = await fetch("/api/demo", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { "x-qm-demo-token": token } : {}),
+    },
     body: JSON.stringify({ action, ...extra }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `${action} failed`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorMessage(data.error, `${action} failed`));
   return data;
 }
 

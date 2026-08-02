@@ -50,7 +50,7 @@ export default function Controller({
         setArmed((a) => Math.min(a + 1, steps.length - 1));
       } catch (err) {
         setStates((s) => ({ ...s, [step.id]: "failed" }));
-        setError(String(err));
+        setError(err instanceof Error ? err.message : String(err));
         play("thud");
       } finally {
         busy.current = false;

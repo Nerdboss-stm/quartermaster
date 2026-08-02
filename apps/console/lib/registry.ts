@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { allOffers } from "./db";
+import { allOffers, upsertOffer } from "./db";
 
 export const NeedSchema = z.object({
   vramGb: z.number().positive(),
@@ -38,9 +38,37 @@ export interface OfferMatch {
   withinBudget: boolean;
 }
 
+/**
+ * Agent B registers itself at boot, but a console that starts later (or a
+ * fresh serverless instance pointed at a new database) would otherwise
+ * have an empty registry until the merchant happens to restart. Pull its
+ * self-description once instead of waiting. Best effort: a merchant that
+ * is down simply yields no offers, and the caller fails closed.
+ */
+export async function ensureOffersSeeded(): Promise<void> {
+  const existing = await allOffers();
+  if (existing.length > 0) return;
+
+  const agentBUrl = process.env.AGENT_B_URL;
+  if (!agentBUrl) return;
+  try {
+    const res = await fetch(`${agentBUrl.replace(/\/$/, "")}/offer`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return;
+    const parsed = OfferSchema.safeParse(await res.json());
+    if (!parsed.success) return;
+    await upsertOffer(parsed.data.id, parsed.data.agentId, parsed.data);
+    console.log(`registry: pulled offer ${parsed.data.id} from ${agentBUrl}`);
+  } catch (err) {
+    console.warn(`registry: could not pull offer from ${agentBUrl}: ${String(err)}`);
+  }
+}
+
 /** Deterministic capability filter. No LLM. Malformed offers never match. */
 export async function queryOffers(need: Need): Promise<OfferMatch[]> {
   if (Date.parse(need.deadline) <= Date.now()) return [];
+  await ensureOffersSeeded();
 
   const matches: OfferMatch[] = [];
   for (const row of await allOffers()) {

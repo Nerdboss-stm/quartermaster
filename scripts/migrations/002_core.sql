@@ -32,7 +32,7 @@ CREATE TABLE runs (
 );
 
 CREATE TABLE trace_events (
-  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  id     {{AUTO_ID}},
   run_id TEXT NOT NULL,
   body   TEXT NOT NULL,
   at     TEXT NOT NULL
@@ -41,7 +41,7 @@ CREATE TABLE trace_events (
 CREATE INDEX idx_trace_events_run ON trace_events (run_id, id);
 
 CREATE TABLE ledger (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  id               {{AUTO_ID}},
   run_id           TEXT NOT NULL,
   mandate_id       TEXT NOT NULL,
   envelope_id      TEXT,

@@ -1,7 +1,7 @@
 -- 003_escalation: escalation requests, replies, webhook dedupe.
 
 CREATE TABLE escalations (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  id             {{AUTO_ID}},
   run_id         TEXT NOT NULL,
   mandate_id     TEXT NOT NULL,
   quote_id       TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE escalations (
 CREATE INDEX idx_escalations_status ON escalations (status, at);
 
 CREATE TABLE escalation_replies (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  id            {{AUTO_ID}},
   run_id        TEXT NOT NULL,
   raw           TEXT NOT NULL,
   action        TEXT CHECK (action IN ('approve', 'decline', 'raise_cap')),

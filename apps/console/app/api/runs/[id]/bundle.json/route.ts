@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const bundle = buildBundle(params.id);
+    const bundle = await buildBundle(params.id);
     if (!bundle) {
       return Response.json({ error: `unknown run ${params.id}` }, { status: 404 });
     }

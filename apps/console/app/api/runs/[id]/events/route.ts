@@ -19,10 +19,10 @@ export async function GET(
       let lastId = 0;
       let closed = false;
 
-      const push = () => {
+      const push = async () => {
         if (closed) return;
         try {
-          for (const row of traceEventsSince(runId, lastId)) {
+          for (const row of await traceEventsSince(runId, lastId)) {
             controller.enqueue(
               encoder.encode(
                 `id: ${row.id}\ndata: ${JSON.stringify({
@@ -39,7 +39,7 @@ export async function GET(
         }
       };
 
-      const poll = setInterval(push, POLL_MS);
+      const poll = setInterval(() => void push(), POLL_MS);
       const heartbeat = setInterval(() => {
         if (!closed) controller.enqueue(encoder.encode(": hb\n\n"));
       }, HEARTBEAT_MS);
@@ -57,7 +57,7 @@ export async function GET(
       };
 
       req.signal.addEventListener("abort", close);
-      push();
+      void push();
     },
   });
 

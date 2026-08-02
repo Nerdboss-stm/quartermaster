@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const pending = latestPendingEscalation();
+    const pending = await latestPendingEscalation();
     if (!pending) return Response.json({ pending: null });
     return Response.json({
       pending: {

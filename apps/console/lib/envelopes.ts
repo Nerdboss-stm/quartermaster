@@ -1,5 +1,5 @@
 import type { PravaMandate } from "@quartermaster/prava-client";
-import { db } from "./db";
+import { sqlAll, sqlGet, sqlRun } from "./db";
 import { MERCHANT } from "./merchant";
 import { prava, pravaCustomerId, pravaUserEmail } from "./prava";
 
@@ -64,10 +64,10 @@ export async function awaitNewMandate(
   throw new Error(`no new mandate appeared within ${timeoutMs}ms: failing closed`);
 }
 
-export function storeEnvelope(
+export async function storeEnvelope(
   label: EnvelopeLabel,
   m: PravaMandate
-): EnvelopeRow {
+): Promise<EnvelopeRow> {
   const row: EnvelopeRow = {
     id: `env_${label.toLowerCase()}_${Date.now()}`,
     label,
@@ -77,20 +77,19 @@ export function storeEnvelope(
     renews_at: m.renewsAt,
     created_at: new Date().toISOString(),
   };
-  db()
-    .prepare(
-      `INSERT INTO envelopes (id, label, prava_mandate_id, merchant_name, per_charge_cap_cents, renews_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  await sqlRun(
+    `INSERT INTO envelopes (id, label, prava_mandate_id, merchant_name, per_charge_cap_cents, renews_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
       row.id,
       row.label,
       row.prava_mandate_id,
       row.merchant_name,
       row.per_charge_cap_cents,
       row.renews_at,
-      row.created_at
-    );
+      row.created_at,
+    ]
+  );
   return row;
 }
 
@@ -98,32 +97,30 @@ export function cycleStartIso(env: EnvelopeRow): string {
   return new Date(Date.parse(env.renews_at) - 7 * 86_400_000).toISOString();
 }
 
-export function envelopeSpentThisCycle(env: EnvelopeRow): number {
-  const row = db()
-    .prepare(
-      `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ledger
-       WHERE entry_type = 'spend' AND envelope_id = ? AND at >= ?`
-    )
-    .get(env.id, cycleStartIso(env)) as { total: number };
-  return row.total;
+export async function envelopeSpentThisCycle(env: EnvelopeRow): Promise<number> {
+  const row = await sqlGet<{ total: number }>(
+    `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ledger
+     WHERE entry_type = 'spend' AND envelope_id = ? AND at >= ?`,
+    [env.id, cycleStartIso(env)]
+  );
+  return Number(row?.total ?? 0);
 }
 
 /** OUR ledger decides cycle eligibility, before any Prava call (hard law 3). */
-export function envelopeCycleOpen(env: EnvelopeRow): boolean {
-  const row = db()
-    .prepare(
-      `SELECT COUNT(*) AS n FROM ledger
-       WHERE entry_type = 'spend' AND envelope_id = ? AND at >= ?`
-    )
-    .get(env.id, cycleStartIso(env)) as { n: number };
-  return row.n === 0;
+export async function envelopeCycleOpen(env: EnvelopeRow): Promise<boolean> {
+  const row = await sqlGet<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM ledger
+     WHERE entry_type = 'spend' AND envelope_id = ? AND at >= ?`,
+    [env.id, cycleStartIso(env)]
+  );
+  return Number(row?.n ?? 0) === 0;
 }
 
 /** Newest envelope per label whose cycle window is still current. */
-export function currentEnvelopes(): EnvelopeRow[] {
-  const rows = db()
-    .prepare("SELECT * FROM envelopes ORDER BY label ASC, created_at DESC")
-    .all() as EnvelopeRow[];
+export async function currentEnvelopes(): Promise<EnvelopeRow[]> {
+  const rows = await sqlAll<EnvelopeRow>(
+    "SELECT * FROM envelopes ORDER BY label ASC, created_at DESC"
+  );
   const seen = new Set<string>();
   const out: EnvelopeRow[] = [];
   const now = Date.now();
@@ -138,7 +135,10 @@ export function currentEnvelopes(): EnvelopeRow[] {
 
 /** An unused same-cycle envelope can be reused by a rerun; a used one
  *  cannot re-charge until renewal (network rule). */
-export function findReusableEnvelope(label: EnvelopeLabel): EnvelopeRow | null {
-  const env = currentEnvelopes().find((e) => e.label === label);
-  return env && envelopeCycleOpen(env) ? env : null;
+export async function findReusableEnvelope(
+  label: EnvelopeLabel
+): Promise<EnvelopeRow | null> {
+  const env = (await currentEnvelopes()).find((e) => e.label === label);
+  if (!env) return null;
+  return (await envelopeCycleOpen(env)) ? env : null;
 }

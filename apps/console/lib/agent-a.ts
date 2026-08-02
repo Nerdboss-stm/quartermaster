@@ -18,7 +18,7 @@ interface RunCtx {
 }
 
 function trace(ctx: RunCtx, body: Record<string, unknown>): void {
-  insertTraceEvent(ctx.runId, body);
+  void insertTraceEvent(ctx.runId, body);
 }
 
 function buildTools(ctx: RunCtx) {
@@ -28,7 +28,7 @@ function buildTools(ctx: RunCtx) {
       "Search the registry for offers matching this run's declared need.",
     parameters: z.object({}),
     async execute() {
-      const matches = queryOffers(ctx.need);
+      const matches = await queryOffers(ctx.need);
       trace(ctx, {
         type: "registry_query",
         need: ctx.need,
@@ -57,7 +57,7 @@ function buildTools(ctx: RunCtx) {
       "Request a firm quote from an offer for this run's declared need.",
     parameters: z.object({ offerId: z.string() }),
     async execute({ offerId }) {
-      const match = queryOffers(ctx.need).find((m) => m.offer.id === offerId);
+      const match = (await queryOffers(ctx.need)).find((m) => m.offer.id === offerId);
       if (!match) return JSON.stringify({ error: "unknown or non-matching offer" });
 
       trace(ctx, {
@@ -99,8 +99,8 @@ function buildTools(ctx: RunCtx) {
         trace(ctx, { type: "requote_blocked", reason: "already negotiated once this run" });
         return JSON.stringify({ error: "negotiation already used this run" });
       }
-      const match = queryOffers(ctx.need).find((m) => m.offer.id === offerId);
-      const quote = findQuote(ctx.runId, quoteId);
+      const match = (await queryOffers(ctx.need)).find((m) => m.offer.id === offerId);
+      const quote = await findQuote(ctx.runId, quoteId);
       if (!match || !quote) return JSON.stringify({ error: "unknown offer or quote" });
 
       ctx.negotiated = true;
@@ -208,15 +208,15 @@ export async function runBuyerAgent(need: Need): Promise<BuyerRunResult> {
   if (!model) throw new Error("OPENAI_MODEL is not set");
 
   const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  createRun(runId);
+  await createRun(runId);
   const ctx: RunCtx = { runId, need, negotiated: false, verdict: null };
 
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "system_error",
     source: "agent_a/job llm-finetune-7b",
     line: "RuntimeError: CUDA out of memory. Tried to allocate 8.42 GiB (GPU 0; 39.39 GiB total capacity; 37.11 GiB already allocated; 212.00 MiB free). Checkpoint stalled at step 41200/52000.",
   });
-  insertTraceEvent(runId, { type: "need_declared", need });
+  await insertTraceEvent(runId, { type: "need_declared", need });
 
   const agent = new Agent({
     name: "agent-a-buyer",
@@ -237,12 +237,12 @@ export async function runBuyerAgent(need: Need): Promise<BuyerRunResult> {
       typeof result.finalOutput === "string"
         ? result.finalOutput
         : JSON.stringify(result.finalOutput ?? "");
-    insertTraceEvent(runId, { type: "agent_final", text: finalOutput });
-    if (!ctx.verdict) setRunState(runId, "failed");
+    await insertTraceEvent(runId, { type: "agent_final", text: finalOutput });
+    if (!ctx.verdict) await setRunState(runId, "failed");
     return { runId, verdict: ctx.verdict, finalOutput };
   } catch (err) {
-    insertTraceEvent(runId, { type: "run_error", error: String(err) });
-    setRunState(runId, "failed");
+    await insertTraceEvent(runId, { type: "run_error", error: String(err) });
+    await setRunState(runId, "failed");
     throw err;
   }
 }

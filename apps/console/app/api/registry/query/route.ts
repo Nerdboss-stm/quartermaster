@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    return Response.json({ matches: queryOffers(parsed.data) });
+    return Response.json({ matches: await queryOffers(parsed.data) });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }

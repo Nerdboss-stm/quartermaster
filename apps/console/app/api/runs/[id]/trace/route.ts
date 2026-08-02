@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const events = traceEventsSince(params.id, 0).map((r) => ({
+    const events = await traceEventsSince(params.id, 0).map((r) => ({
       id: r.id,
       at: r.at,
       body: JSON.parse(r.body) as Record<string, unknown>,

@@ -1,4 +1,4 @@
-import { createRun, db, insertTraceEvent, setRunState } from "./db";
+import { createRun, insertTraceEvent, setRunState, sqlGet, sqlRun } from "./db";
 import { evaluateQuote } from "./evaluate-quote";
 import { findQuote } from "./quotes";
 import { NeedSchema, queryOffers, type Need } from "./registry";
@@ -45,11 +45,11 @@ export async function nandaQuote(rawNeed: unknown): Promise<NandaQuote> {
   const need: Need = parsed.data;
 
   const runId = `nanda_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  createRun(runId);
-  insertTraceEvent(runId, { type: "need_declared", need, source: "nanda" });
+  await createRun(runId);
+  await insertTraceEvent(runId, { type: "need_declared", need, source: "nanda" });
 
-  const matches = queryOffers(need);
-  insertTraceEvent(runId, {
+  const matches = await queryOffers(need);
+  await insertTraceEvent(runId, {
     type: "registry_query",
     need,
     matches: matches.map((m) => ({
@@ -61,13 +61,13 @@ export async function nandaQuote(rawNeed: unknown): Promise<NandaQuote> {
   });
   const match = matches[0];
   if (!match) {
-    setRunState(runId, "no_offer");
+    await setRunState(runId, "no_offer");
     throw new NandaError("NO_OFFER", "no registered offer satisfies the need", {
       runId,
     });
   }
 
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "quote_requested",
     offerId: match.offer.id,
     url: match.offer.quoteUrl,
@@ -79,7 +79,7 @@ export async function nandaQuote(rawNeed: unknown): Promise<NandaQuote> {
     body: JSON.stringify(need),
   });
   if (!res.ok) {
-    setRunState(runId, "quote_failed");
+    await setRunState(runId, "quote_failed");
     throw new NandaError("QUOTE_FAILED", `merchant quote failed: ${res.status}`, {
       runId,
     });
@@ -92,12 +92,12 @@ export async function nandaQuote(rawNeed: unknown): Promise<NandaQuote> {
     attributes: Record<string, string | number | boolean>;
     pricingRule?: string;
   };
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "quote_received",
     offerId: match.offer.id,
     quote,
   });
-  setRunState(runId, "quoted");
+  await setRunState(runId, "quoted");
 
   return {
     runId,
@@ -131,19 +131,19 @@ export interface NandaPayResult {
   at: string;
 }
 
-function recordFailure(
+async function recordFailure(
   input: NandaPayInput,
   code: string,
   message: string
-): void {
-  db()
-    .prepare(
-      `INSERT OR REPLACE INTO nanda_payments
+): Promise<void> {
+  await sqlRun(
+    `INSERT INTO nanda_payments
        (ref, run_id, quote_id, payer, payee, amount_cents, currency, status,
         envelope_id, prava_txn_id, merchant_ref, error_code, error_message, at)
-       VALUES (?, ?, ?, ?, ?, ?, 'USD', 'failed', NULL, NULL, NULL, ?, ?, ?)`
-    )
-    .run(
+     VALUES (?, ?, ?, ?, ?, ?, 'USD', 'failed', NULL, NULL, NULL, ?, ?, ?)
+     ON CONFLICT (ref) DO UPDATE SET status = 'failed', error_code = excluded.error_code,
+       error_message = excluded.error_message, at = excluded.at`,
+    [
       input.ref,
       input.runId,
       input.quoteId,
@@ -152,8 +152,9 @@ function recordFailure(
       input.amountCents,
       code,
       message,
-      new Date().toISOString()
-    );
+      new Date().toISOString(),
+    ]
+  );
 }
 
 /**
@@ -163,9 +164,10 @@ function recordFailure(
  * any Prava call is made (fail closed).
  */
 export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
-  const existing = db()
-    .prepare("SELECT ref, status FROM nanda_payments WHERE ref = ?")
-    .get(input.ref) as { ref: string; status: string } | undefined;
+  const existing = await sqlGet<{ ref: string; status: string }>(
+    "SELECT ref, status FROM nanda_payments WHERE ref = ?",
+    [input.ref]
+  );
   if (existing?.status === "confirmed") {
     throw new NandaError(
       "DUPLICATE_REF",
@@ -175,7 +177,7 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
     );
   }
 
-  const quote = findQuote(input.runId, input.quoteId);
+  const quote = await findQuote(input.runId, input.quoteId);
   if (!quote) {
     throw new NandaError(
       "UNKNOWN_QUOTE",
@@ -188,14 +190,14 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
   // it made up.
   if (quote.amountCents !== input.amountCents) {
     const message = `amount ${input.amountCents} does not match quoted ${quote.amountCents}`;
-    recordFailure(input, "AMOUNT_MISMATCH", message);
+    await recordFailure(input, "AMOUNT_MISMATCH", message);
     throw new NandaError("AMOUNT_MISMATCH", message, {
       quotedCents: quote.amountCents,
       requestedCents: input.amountCents,
     });
   }
 
-  insertTraceEvent(input.runId, {
+  await insertTraceEvent(input.runId, {
     type: "nanda_pay_requested",
     ref: input.ref,
     payer: input.payer,
@@ -208,7 +210,7 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
   if (verdict.decision !== "EXECUTE") {
     const failing = verdict.determinedBy[0];
     const message = failing?.detail ?? "policy refused the charge";
-    recordFailure(input, `POLICY_${verdict.decision}`, message);
+    await recordFailure(input, `POLICY_${verdict.decision}`, message);
     throw new NandaError(
       `POLICY_${verdict.decision}`,
       message,
@@ -250,7 +252,7 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
         settlement.merchantRef,
         at
       );
-    insertTraceEvent(input.runId, {
+    await insertTraceEvent(input.runId, {
       type: "nanda_payment_confirmed",
       ref: input.ref,
       transactionId: settlement.transactionId,
@@ -269,7 +271,7 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
   } catch (err) {
     // No envelope with cycle capacity: refused before any Prava call.
     if (err instanceof RouteRefused) {
-      recordFailure(input, "NO_ENVELOPE_CAPACITY", err.reason);
+      await recordFailure(input, "NO_ENVELOPE_CAPACITY", err.reason);
       throw new NandaError(
         "NO_ENVELOPE_CAPACITY",
         `no envelope with cycle capacity: ${err.reason}`,
@@ -278,7 +280,7 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
       );
     }
     const message = err instanceof Error ? err.message : String(err);
-    recordFailure(input, "SETTLEMENT_FAILED", message);
+    await recordFailure(input, "SETTLEMENT_FAILED", message);
     throw new NandaError("SETTLEMENT_FAILED", message, { runId: input.runId }, 502);
   }
 }

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    upsertOffer(parsed.data.id, parsed.data.agentId, parsed.data);
+    await upsertOffer(parsed.data.id, parsed.data.agentId, parsed.data);
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }

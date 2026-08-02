@@ -37,7 +37,7 @@ export function buildEscalator(runId: string | null): Escalator {
     });
   }
   return new ConsoleEscalator((kind, payload) => {
-    if (runId) insertTraceEvent(runId, { type: `console_${kind}`, payload });
+    if (runId) await insertTraceEvent(runId, { type: `console_${kind}`, payload });
     else console.log(`escalation console sink: ${kind}`, payload);
   });
 }
@@ -69,7 +69,7 @@ export async function raiseEscalation(
       new Date().toISOString()
     );
   const channel = escalationChannel();
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "escalation_requested",
     channel,
     mandateId: e.mandateId,
@@ -125,7 +125,7 @@ export function recordReply(
       source,
       new Date().toISOString()
     );
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "escalation_reply",
     raw,
     parsed: parsed ?? null,
@@ -161,7 +161,7 @@ export async function awaitReply(
     }
     await new Promise((r) => setTimeout(r, 1500));
   }
-  setRunState(runId, "escalation_timeout");
-  insertTraceEvent(runId, { type: "escalation_timeout", timeoutMs });
+  await setRunState(runId, "escalation_timeout");
+  await insertTraceEvent(runId, { type: "escalation_timeout", timeoutMs });
   throw new Error(`escalation reply timeout after ${timeoutMs}ms: failing closed`);
 }

@@ -94,7 +94,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, ignored: "not the demo chat" });
   }
 
-  const pending = latestPendingEscalation();
+  const pending = await latestPendingEscalation();
   if (!pending) return Response.json({ ok: true, ignored: "no pending escalation" });
 
   const raw =
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
       .join(" ")
       .trim() || String(data.body ?? "");
   if (!raw) return Response.json({ ok: true, ignored: "no text parts" });
-  const { parsed, correction } = recordReply(pending.run_id, raw, "linq");
+  const { parsed, correction } = await recordReply(pending.run_id, raw, "linq");
 
   if (correction && process.env.LINQ_API_KEY && process.env.LINQ_FROM_NUMBER && ownerHandle) {
     try {

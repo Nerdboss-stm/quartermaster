@@ -32,7 +32,7 @@ interface OrderResponse {
 
 function countChargeAttempts(runId: string): number {
   let n = 0;
-  for (const row of traceEventsSince(runId, 0)) {
+  for (const row of await traceEventsSince(runId, 0)) {
     const t = (JSON.parse(row.body) as { type?: string }).type;
     if (t === "charge_created" || t === "charge_failed" || t === "charge_error") n++;
   }
@@ -57,11 +57,11 @@ export async function settleRun(
   if (verdict.proposalId !== quoteId) {
     throw new Error("verdict/quote mismatch: failing closed");
   }
-  const quote = findQuote(runId, quoteId);
+  const quote = await findQuote(runId, quoteId);
   if (!quote) throw new Error(`unknown quote ${quoteId}: failing closed`);
 
   const mode = settlementMode();
-  const envelope = routeCharge(runId, quote.amountCents, MERCHANT.name);
+  const envelope = await routeCharge(runId, quote.amountCents, MERCHANT.name);
 
   // The sandbox does not always clear a FAILED charge's idempotency key
   // (DUPLICATE_RESOURCE observed), so each retry derives a unique
@@ -78,15 +78,15 @@ export async function settleRun(
       reference
     );
   } catch (err) {
-    insertTraceEvent(runId, { type: "charge_error", reference, error: String(err) });
-    setRunState(runId, "settlement_failed");
+    await insertTraceEvent(runId, { type: "charge_error", reference, error: String(err) });
+    await setRunState(runId, "settlement_failed");
     throw err;
   }
 
   if (charge.status !== "awaiting_result" || !charge.credentials) {
     if (isCycleDeclined(charge)) {
       // Hard law 3: our ledger should have made this impossible.
-      insertTraceEvent(runId, {
+      await insertTraceEvent(runId, {
         type: "router_bug_cycle_declined",
         envelopeId: envelope.id,
         pravaMandateId: envelope.prava_mandate_id,
@@ -94,20 +94,20 @@ export async function settleRun(
         alert: "ROUTER BUG: network cycle decline reached Prava. Never retry.",
       });
     } else {
-      insertTraceEvent(runId, {
+      await insertTraceEvent(runId, {
         type: "charge_failed",
         reference,
         errorCode: charge.errorCode,
         errorMessage: charge.errorMessage,
       });
     }
-    setRunState(runId, "settlement_failed");
+    await setRunState(runId, "settlement_failed");
     throw new Error(
       `mandate charge failed: ${charge.errorCode ?? "unknown"} ${charge.errorMessage ?? ""}`.trim()
     );
   }
 
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "charge_created",
     pravaMandateId: charge.mandateId,
     transactionId: charge.transactionId,
@@ -130,7 +130,7 @@ export async function settleRun(
     "APPROVED",
     quote.amountCents
   );
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "charge_reported",
     transactionId: charge.transactionId,
     status: report.status,
@@ -162,14 +162,14 @@ export async function settleRun(
       new Date().toISOString()
     );
 
-  const meter = portfolioMeter();
+  const meter = await portfolioMeter();
   const receiptText =
     `Charged ${usd(quote.amountCents)} to agent_b from Envelope ${envelope.label}.` +
     (opts.autonomous
       ? ` Portfolio: ${usd(meter.portfolio.spent_cents)} of ${usd(meter.portfolio.cap_cents)} this cycle.`
       : "");
 
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "settlement_complete",
     envelope: envelope.label,
     envelopeId: envelope.id,
@@ -179,14 +179,14 @@ export async function settleRun(
     autonomous: opts.autonomous,
     noHumanInLoop: opts.autonomous,
   });
-  setRunState(runId, "settled");
+  await setRunState(runId, "settled");
 
   try {
     await buildEscalator(runId).sendText(receiptText);
-    insertTraceEvent(runId, { type: "receipt_sent", text: receiptText });
+    await insertTraceEvent(runId, { type: "receipt_sent", text: receiptText });
   } catch (err) {
     // Settlement already stands; a receipt failure must not unwind it.
-    insertTraceEvent(runId, { type: "receipt_send_failed", error: String(err) });
+    await insertTraceEvent(runId, { type: "receipt_send_failed", error: String(err) });
   }
 
   return {
@@ -211,24 +211,24 @@ async function settleSandbox(
     body: JSON.stringify({ runId, quoteId, amountCents, credential }),
   });
   if (!res.ok) {
-    insertTraceEvent(runId, { type: "order_failed", status: res.status });
+    await insertTraceEvent(runId, { type: "order_failed", status: res.status });
     // Charge minted but merchant unpaid: surface loudly, do not guess at
     // Prava report semantics for an unused credential.
     throw new Error(`agent-b order failed with ${res.status}: failing closed`);
   }
   const order = (await res.json()) as OrderResponse;
   if (order.status !== "paid" || order.environment !== "SANDBOX" || !order.orderRef) {
-    insertTraceEvent(runId, { type: "order_invalid", order });
+    await insertTraceEvent(runId, { type: "order_invalid", order });
     throw new Error("agent-b order response invalid: failing closed");
   }
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "order_paid",
     orderRef: order.orderRef,
     environment: order.environment,
   });
   // Beat 10: the merchant's own provisioning log, echoed verbatim.
   for (const entry of order.provisioning ?? []) {
-    insertTraceEvent(runId, {
+    await insertTraceEvent(runId, {
       type: "provisioning",
       orderRef: order.orderRef,
       line: entry.line,

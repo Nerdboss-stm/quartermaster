@@ -1,5 +1,5 @@
 import type { Clause, Mandate } from "mandate-arbiter";
-import { db, insertTraceEvent } from "./db";
+import { insertTraceEvent, sqlTx } from "./db";
 import { loadActiveMandate, mandateChainIds } from "./mandates";
 import { settlementMode } from "./prava";
 
@@ -30,48 +30,49 @@ function replaceAmountCap(
  * immutable). Copies the active mandate, replaces amount_cap, records the
  * supersede link and a ledger 'amendment' row.
  */
-export function amendActiveMandate(
+export async function amendActiveMandate(
   runId: string,
   newCapCents: number,
   reason: string
-): { oldId: string; newId: string; clausePath: string } {
-  const old = loadActiveMandate();
+): Promise<{ oldId: string; newId: string; clausePath: string }> {
+  const old = await loadActiveMandate();
   const next = JSON.parse(JSON.stringify(old)) as Mandate;
   const clausePath = replaceAmountCap(next.root, "root", newCapCents);
   if (!clausePath) {
     throw new Error("active mandate has no amount_cap clause: failing closed");
   }
-  const version = mandateChainIds(old.id).length + 1;
+  const version = (await mandateChainIds(old.id)).length + 1;
   next.id = `qm_mdt_policy_v${version}`;
   next.issuedAt = new Date().toISOString();
 
   const now = new Date().toISOString();
-  db().transaction(() => {
-    db()
-      .prepare(
-        "INSERT INTO mandates (id, body, status, supersedes, created_at) VALUES (?, ?, 'active', ?, ?)"
-      )
-      .run(next.id, JSON.stringify(next), old.id, now);
-    db()
-      .prepare("UPDATE mandates SET status = 'superseded' WHERE id = ?")
-      .run(old.id);
-    db()
-      .prepare(
-        `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
-           clause_paths, amount_cents, currency, mode, at)
-         VALUES (?, ?, NULL, 'amendment', 0, ?, 0, ?, ?, ?)`
-      )
-      .run(
+  // One atomic step: the new mandate, the supersede flip, and the ledger
+  // row that records the amendment.
+  await sqlTx([
+    {
+      sql: "INSERT INTO mandates (id, body, status, supersedes, created_at) VALUES (?, ?, 'active', ?, ?)",
+      params: [next.id, JSON.stringify(next), old.id, now],
+    },
+    {
+      sql: "UPDATE mandates SET status = 'superseded' WHERE id = ?",
+      params: [old.id],
+    },
+    {
+      sql: `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
+              clause_paths, amount_cents, currency, mode, at)
+            VALUES (?, ?, NULL, 'amendment', 0, ?, 0, ?, ?, ?)`,
+      params: [
         runId,
         next.id,
         JSON.stringify([clausePath]),
         next.currency,
         settlementMode(),
-        now
-      );
-  })();
+        now,
+      ],
+    },
+  ]);
 
-  insertTraceEvent(runId, {
+  await insertTraceEvent(runId, {
     type: "mandate_amended",
     oldId: old.id,
     newId: next.id,

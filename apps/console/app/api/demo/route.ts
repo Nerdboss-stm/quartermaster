@@ -66,7 +66,7 @@ export async function POST(req: Request) {
           }[]).map((r) => r.prava_mandate_id)
         );
         const mandate = await awaitNewMandate(known, 4 * 60_000);
-        const row = storeEnvelope(label, mandate);
+        const row = await storeEnvelope(label, mandate);
         return Response.json({ envelope: row });
       }
 
@@ -76,13 +76,13 @@ export async function POST(req: Request) {
       }
 
       case "replyStatus": {
-        const runId = body.runId ?? latestRunId();
+        const runId = body.runId ?? await latestRunId();
         if (!runId) return Response.json({ reply: null });
-        return Response.json({ reply: recordedReply(runId) });
+        return Response.json({ reply: await recordedReply(runId) });
       }
 
       case "amend": {
-        const runId = body.runId ?? latestRunId();
+        const runId = body.runId ?? await latestRunId();
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
         const prior = latestVerdict(runId);
         if (!prior) return Response.json({ error: "no verdict" }, { status: 409 });
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       }
 
       case "settle": {
-        const runId = body.runId ?? latestRunId();
+        const runId = body.runId ?? await latestRunId();
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
         const verdict = latestVerdict(runId);
         if (!verdict || verdict.decision !== "EXECUTE") {

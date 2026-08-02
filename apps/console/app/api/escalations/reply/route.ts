@@ -15,10 +15,10 @@ export async function POST(req: Request) {
   if (typeof body.raw !== "string" || body.raw.length === 0 || body.raw.length > 200) {
     return Response.json({ error: "raw reply required" }, { status: 400 });
   }
-  const pending = latestPendingEscalation();
+  const pending = await latestPendingEscalation();
   if (!pending) {
     return Response.json({ error: "no pending escalation" }, { status: 409 });
   }
-  const { parsed, correction } = recordReply(pending.run_id, body.raw, "console");
+  const { parsed, correction } = await recordReply(pending.run_id, body.raw, "console");
   return Response.json({ ok: true, parsed, correction: correction ?? null });
 }

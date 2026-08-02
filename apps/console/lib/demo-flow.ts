@@ -1,7 +1,7 @@
 import type { Verdict } from "mandate-arbiter";
 import { runBuyerAgent } from "./agent-a";
 import { amendActiveMandate } from "./amendments";
-import { db, insertTraceEvent, setRunState } from "./db";
+import { insertTraceEvent, setRunState, sqlGet } from "./db";
 import { evaluateQuote } from "./evaluate-quote";
 import { usd } from "./money";
 import { findQuote } from "./quotes";
@@ -39,16 +39,16 @@ export async function runFirstNeed(): Promise<{
 }
 
 /** The owner's reply, once the strict parser has accepted one. */
-export function recordedReply(
+export async function recordedReply(
   runId: string
-): { action: "approve" | "decline" | "raise_cap"; newCapCents?: number } | null {
-  const row = db()
-    .prepare(
-      "SELECT action, new_cap_cents FROM escalation_replies WHERE run_id = ? AND action IS NOT NULL ORDER BY id LIMIT 1"
-    )
-    .get(runId) as
-    | { action: "approve" | "decline" | "raise_cap"; new_cap_cents: number | null }
-    | undefined;
+): Promise<{ action: "approve" | "decline" | "raise_cap"; newCapCents?: number } | null> {
+  const row = await sqlGet<{
+    action: "approve" | "decline" | "raise_cap";
+    new_cap_cents: number | null;
+  }>(
+    "SELECT action, new_cap_cents FROM escalation_replies WHERE run_id = ? AND action IS NOT NULL ORDER BY id LIMIT 1",
+    [runId]
+  );
   if (!row) return null;
   return {
     action: row.action,
@@ -65,20 +65,20 @@ export async function amendAndReEvaluate(
   runId: string,
   quoteId: string
 ): Promise<Verdict | null> {
-  const reply = recordedReply(runId);
+  const reply = await recordedReply(runId);
   if (!reply) throw new Error("no parsed owner reply yet: failing closed");
 
   if (reply.action === "decline") {
-    insertTraceEvent(runId, { type: "owner_declined" });
-    setRunState(runId, "declined_by_owner");
+    await insertTraceEvent(runId, { type: "owner_declined" });
+    await setRunState(runId, "declined_by_owner");
     return null;
   }
-  const quote = findQuote(runId, quoteId);
+  const quote = await findQuote(runId, quoteId);
   if (!quote) throw new Error(`unknown quote ${quoteId}: failing closed`);
 
   const newCap =
     reply.action === "raise_cap" ? reply.newCapCents! : quote.amountCents;
-  amendActiveMandate(runId, newCap, `owner reply: ${reply.action}`);
+  await amendActiveMandate(runId, newCap, `owner reply: ${reply.action}`);
   return evaluateQuote(runId, quoteId);
 }
 

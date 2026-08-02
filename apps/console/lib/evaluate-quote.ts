@@ -9,11 +9,11 @@ export async function evaluateQuote(
   runId: string,
   quoteId: string
 ): Promise<Verdict> {
-  const quote = findQuote(runId, quoteId);
+  const quote = await findQuote(runId, quoteId);
   if (!quote) {
     throw new Error(`unknown quote ${quoteId} in run ${runId}: failing closed`);
   }
-  const mandate = loadActiveMandate();
+  const mandate = await loadActiveMandate();
   const proposal = {
     id: quote.id,
     counterpartyId: quote.counterpartyId,
@@ -24,10 +24,10 @@ export async function evaluateQuote(
   };
   const verdict = await evaluate(mandate, proposal, {
     ledger: ledgerReader(),
-    onEvent: (e) => insertTraceEvent(runId, e),
+    onEvent: (e) => void insertTraceEvent(runId, e),
   });
-  insertTraceEvent(runId, { type: "verdict_full", verdict });
-  setRunState(
+  await insertTraceEvent(runId, { type: "verdict_full", verdict });
+  await setRunState(
     runId,
     verdict.decision === "EXECUTE"
       ? "execute_ready"

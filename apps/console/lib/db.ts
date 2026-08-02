@@ -1,33 +1,40 @@
-import Database from "better-sqlite3";
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { initStore } from "./store-init";
+import { all, get, run, tx, type Params } from "./store";
 
-function findRepoRoot(start: string): string {
-  let dir = start;
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(`repo root (pnpm-workspace.yaml) not found above ${start}`);
+/**
+ * Database helpers. Every function initialises the driver first, so a
+ * route handler can call any of these without wiring setup itself.
+ *
+ * Async throughout: Postgres has no synchronous client, and the demo's
+ * SQLite driver resolves immediately, so both hosts share this code.
+ */
+
+export async function sqlAll<T>(sql: string, params?: Params): Promise<T[]> {
+  await initStore();
+  return all<T>(sql, params);
 }
 
-const dbPath =
-  process.env.QM_DB_PATH ??
-  path.join(findRepoRoot(process.cwd()), "db", "quartermaster.db");
+export async function sqlGet<T>(
+  sql: string,
+  params?: Params
+): Promise<T | undefined> {
+  await initStore();
+  return get<T>(sql, params);
+}
 
-let handle: Database.Database | null = null;
+export async function sqlRun(
+  sql: string,
+  params?: Params
+): Promise<{ changes: number }> {
+  await initStore();
+  return run(sql, params);
+}
 
-export function db(): Database.Database {
-  if (!handle) {
-    if (!existsSync(dbPath)) {
-      throw new Error(`${dbPath} missing: run \`pnpm db:migrate\` first`);
-    }
-    handle = new Database(dbPath);
-    handle.pragma("journal_mode = WAL");
-  }
-  return handle;
+export async function sqlTx(
+  statements: { sql: string; params?: Params }[]
+): Promise<void> {
+  await initStore();
+  return tx(statements);
 }
 
 export interface TraceRow {
@@ -37,48 +44,59 @@ export interface TraceRow {
   at: string;
 }
 
-export function insertTraceEvent(runId: string, body: unknown): void {
-  db()
-    .prepare("INSERT INTO trace_events (run_id, body, at) VALUES (?, ?, ?)")
-    .run(runId, JSON.stringify(body), new Date().toISOString());
+export async function insertTraceEvent(
+  runId: string,
+  body: unknown
+): Promise<void> {
+  await sqlRun("INSERT INTO trace_events (run_id, body, at) VALUES (?, ?, ?)", [
+    runId,
+    JSON.stringify(body),
+    new Date().toISOString(),
+  ]);
 }
 
-export function traceEventsSince(runId: string, afterId: number): TraceRow[] {
-  return db()
-    .prepare(
-      "SELECT id, run_id, body, at FROM trace_events WHERE run_id = ? AND id > ? ORDER BY id"
-    )
-    .all(runId, afterId) as TraceRow[];
+export async function traceEventsSince(
+  runId: string,
+  afterId: number
+): Promise<TraceRow[]> {
+  return sqlAll<TraceRow>(
+    "SELECT id, run_id, body, at FROM trace_events WHERE run_id = ? AND id > ? ORDER BY id",
+    [runId, afterId]
+  );
 }
 
-export function createRun(id: string): void {
-  db()
-    .prepare("INSERT INTO runs (id, state, created_at) VALUES (?, 'running', ?)")
-    .run(id, new Date().toISOString());
+export async function createRun(id: string): Promise<void> {
+  await sqlRun("INSERT INTO runs (id, state, created_at) VALUES (?, 'running', ?)", [
+    id,
+    new Date().toISOString(),
+  ]);
 }
 
-export function setRunState(id: string, state: string): void {
-  db().prepare("UPDATE runs SET state = ? WHERE id = ?").run(state, id);
+export async function setRunState(id: string, state: string): Promise<void> {
+  await sqlRun("UPDATE runs SET state = ? WHERE id = ?", [state, id]);
 }
 
-export function latestRunId(): string | null {
-  const row = db()
-    .prepare("SELECT id FROM runs ORDER BY created_at DESC, id DESC LIMIT 1")
-    .get() as { id: string } | undefined;
+export async function latestRunId(): Promise<string | null> {
+  const row = await sqlGet<{ id: string }>(
+    "SELECT id FROM runs ORDER BY created_at DESC, id DESC LIMIT 1"
+  );
   return row?.id ?? null;
 }
 
-export function upsertOffer(id: string, agentId: string, body: unknown): void {
-  db()
-    .prepare(
-      `INSERT INTO offers (id, agent_id, body, created_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET agent_id = excluded.agent_id, body = excluded.body`
-    )
-    .run(id, agentId, JSON.stringify(body), new Date().toISOString());
+export async function upsertOffer(
+  id: string,
+  agentId: string,
+  body: unknown
+): Promise<void> {
+  await sqlRun(
+    `INSERT INTO offers (id, agent_id, body, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET agent_id = excluded.agent_id, body = excluded.body`,
+    [id, agentId, JSON.stringify(body), new Date().toISOString()]
+  );
 }
 
-export function allOffers(): { id: string; agent_id: string; body: string }[] {
-  return db()
-    .prepare("SELECT id, agent_id, body FROM offers")
-    .all() as { id: string; agent_id: string; body: string }[];
+export async function allOffers(): Promise<
+  { id: string; agent_id: string; body: string }[]
+> {
+  return sqlAll("SELECT id, agent_id, body FROM offers");
 }

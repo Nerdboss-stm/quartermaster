@@ -1,5 +1,5 @@
 import type { Clause } from "mandate-arbiter";
-import { db } from "./db";
+import { sqlGet } from "./db";
 import {
   currentEnvelopes,
   envelopeCycleOpen,
@@ -19,15 +19,17 @@ function findCumulativeCap(clause: Clause): number | null {
   return null;
 }
 
-export function portfolioMeter() {
-  const envelopes = currentEnvelopes().map((env) => ({
-    label: env.label,
-    prava_mandate_id: env.prava_mandate_id,
-    per_charge_cap_cents: env.per_charge_cap_cents,
-    renews_at: env.renews_at,
-    cycle: envelopeCycleOpen(env) ? "OPEN" : "USED",
-    spent_cents: envelopeSpentThisCycle(env),
-  }));
+export async function portfolioMeter() {
+  const envelopes = await Promise.all(
+    (await currentEnvelopes()).map(async (env) => ({
+      label: env.label,
+      prava_mandate_id: env.prava_mandate_id,
+      per_charge_cap_cents: env.per_charge_cap_cents,
+      renews_at: env.renews_at,
+      cycle: (await envelopeCycleOpen(env)) ? "OPEN" : "USED",
+      spent_cents: await envelopeSpentThisCycle(env),
+    }))
+  );
 
   const portfolio = {
     spent_cents: envelopes.reduce((s, e) => s + e.spent_cents, 0),
@@ -37,17 +39,16 @@ export function portfolioMeter() {
   let policy: { cumulative_cents: number; cap_cents: number | null } | null =
     null;
   try {
-    const mandate = loadActiveMandate();
-    const ids = mandateChainIds(mandate.id);
+    const mandate = await loadActiveMandate();
+    const ids = await mandateChainIds(mandate.id);
     const placeholders = ids.map(() => "?").join(", ");
-    const row = db()
-      .prepare(
-        `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ledger
-         WHERE entry_type = 'spend' AND mandate_id IN (${placeholders})`
-      )
-      .get(...ids) as { total: number };
+    const row = await sqlGet<{ total: number }>(
+      `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ledger
+       WHERE entry_type = 'spend' AND mandate_id IN (${placeholders})`,
+      ids
+    );
     policy = {
-      cumulative_cents: row.total,
+      cumulative_cents: Number(row?.total ?? 0),
       cap_cents: findCumulativeCap(mandate.root),
     };
   } catch {

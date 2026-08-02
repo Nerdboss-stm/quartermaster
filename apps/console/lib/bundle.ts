@@ -61,7 +61,7 @@ export function buildBundle(runId: string): AuditBundle | null {
   }
   const chainIds = new Set<string>();
   for (const id of mandateIds) {
-    for (const linked of mandateChainIds(id)) chainIds.add(linked);
+    for (const linked of await mandateChainIds(id)) chainIds.add(linked);
   }
   const policyMandateChain = [...chainIds]
     .map((id) => {

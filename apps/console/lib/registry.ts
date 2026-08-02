@@ -39,11 +39,11 @@ export interface OfferMatch {
 }
 
 /** Deterministic capability filter. No LLM. Malformed offers never match. */
-export function queryOffers(need: Need): OfferMatch[] {
+export async function queryOffers(need: Need): Promise<OfferMatch[]> {
   if (Date.parse(need.deadline) <= Date.now()) return [];
 
   const matches: OfferMatch[] = [];
-  for (const row of allOffers()) {
+  for (const row of await allOffers()) {
     let parsed: ReturnType<typeof OfferSchema.safeParse>;
     try {
       parsed = OfferSchema.safeParse(JSON.parse(row.body));

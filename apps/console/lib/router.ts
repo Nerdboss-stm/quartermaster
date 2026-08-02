@@ -19,13 +19,13 @@ export class RouteRefused extends Error {
  * OUR ledger. Prefer A, then B (label order). No eligible envelope: fail
  * closed, never call Prava, surface like a clause refusal.
  */
-export function routeCharge(
+export async function routeCharge(
   runId: string,
   amountCents: number,
   merchantName: string
-): EnvelopeRow {
+): Promise<EnvelopeRow> {
   const notes: string[] = [];
-  for (const env of currentEnvelopes()) {
+  for (const env of await currentEnvelopes()) {
     if (!merchantMatch(env.merchant_name, merchantName)) {
       notes.push(`${env.label}: merchant mismatch`);
       continue;
@@ -36,7 +36,7 @@ export function routeCharge(
       );
       continue;
     }
-    if (!envelopeCycleOpen(env)) {
+    if (!(await envelopeCycleOpen(env))) {
       notes.push(`${env.label}: cycle spent`);
       continue;
     }
@@ -44,7 +44,7 @@ export function routeCharge(
       ...notes,
       `${env.label}: selected (merchant match, cap ${usd(env.per_charge_cap_cents)} >= ${usd(amountCents)}, cycle open)`,
     ].join(" -> ");
-    insertTraceEvent(runId, {
+    await insertTraceEvent(runId, {
       type: "route_selected",
       envelope: env.label,
       envelopeId: env.id,
@@ -55,6 +55,6 @@ export function routeCharge(
   }
   const reason =
     notes.length > 0 ? notes.join(" -> ") : "no envelopes in current cycle";
-  insertTraceEvent(runId, { type: "route_refused", reason });
+  await insertTraceEvent(runId, { type: "route_refused", reason });
   throw new RouteRefused(reason);
 }

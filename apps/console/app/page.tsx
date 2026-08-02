@@ -63,6 +63,22 @@ export default async function Landing({
           network. If it wants to go further, it wakes you with a text and
           waits.
         </p>
+
+        {/* The moment the whole product exists for, on the way in rather
+            than behind a signup form. Verbatim from a real refusal. */}
+        <figure className="mt-10 max-w-xl border-l-2 border-amber-500 bg-neutral-950 py-3 pl-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">
+            3:12 AM · your agent, mid-purchase
+          </p>
+          <p className="mt-2 font-mono text-[15px] tabular-nums text-amber-400">
+            amount $47.00 exceeds cap $40.00
+          </p>
+          <figcaption className="mt-2 font-sans text-[13px] leading-relaxed text-neutral-500">
+            It stopped. Seven dollars over the line you drew, and it would
+            rather wake you than guess.
+          </figcaption>
+        </figure>
+
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Link
             href="/signup"
@@ -70,11 +86,19 @@ export default async function Landing({
           >
             Give it a budget
           </Link>
+          {shared.length > 0 ? (
+            <Link
+              href={`/r/${shared[0].id}`}
+              className="border border-neutral-700 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-300 hover:border-neutral-500"
+            >
+              Watch a real one · no signup
+            </Link>
+          ) : null}
           <Link
             href="/console"
             className="border border-neutral-800 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"
           >
-            Watch the desk
+            The desk
           </Link>
         </div>
       </section>
@@ -95,6 +119,19 @@ export default async function Landing({
           title="You wake up to receipts"
           body="Every cent lands in an append-only ledger, attributed to the clause that allowed it and the envelope it came from."
         />
+      </section>
+
+      <section className="mt-20 border-t border-neutral-900 pt-10">
+        <h2 className="max-w-2xl font-sans text-2xl leading-snug text-neutral-100">
+          The other side is a person.
+        </h2>
+        <p className="mt-3 max-w-xl font-sans text-[15px] leading-relaxed text-neutral-400">
+          Compute here is sold by companies with racks and by people with one
+          good card in a spare room. Both publish to the same registry, both
+          get asked for a price by the same agent, and neither can tell which
+          kind of buyer is on the other end. Somebody's idle 4090 earns money
+          at 3 AM while they sleep.
+        </p>
       </section>
 
       {settled.length > 0 ? (

@@ -32,6 +32,11 @@ export default async function RunPage({ params }: { params: { id: string } }) {
             {run.id}
           </p>
         </div>
+        <p className="hidden max-w-md font-sans text-[11px] leading-relaxed text-neutral-600 lg:block">
+          The model searched, asked for prices and haggled. It never decided
+          whether money could move — that is the arbiter below, and it is
+          ordinary code.
+        </p>
         <ShareToggle runId={run.id} shared={run.shared === 1} />
       </header>
 

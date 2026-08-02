@@ -3,6 +3,7 @@ import { portfolioMeter } from "@/lib/portfolio";
 import EnvelopeWizard from "../../_ui/envelope-wizard";
 import PageHeader from "../../_ui/page-header";
 import { Amount, Badge, Card, Meter, Mono } from "../../_ui/primitives";
+import WhoHoldsTheLine from "../../_ui/who-holds-the-line";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,10 @@ export default async function PortfolioPage() {
             </div>
           )}
         </Card>
+
+        <div className="lg:col-span-2">
+          <WhoHoldsTheLine />
+        </div>
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { morningBrief } from "@/lib/brief";
 import { sqlAll } from "@/lib/db";
 import { listingsForOwner, salesForOwner } from "@/lib/listings";
 import { needsForOwner } from "@/lib/needs";
@@ -14,6 +15,7 @@ import {
   Stamp,
   toneForState,
 } from "../_ui/primitives";
+import MorningBrief from "../_ui/morning-brief";
 import PageHeader from "../_ui/page-header";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function Dashboard() {
   const user = await requireUser();
 
-  const [meter, needs, listings, sales, runs] = await Promise.all([
+  const [meter, needs, listings, sales, runs, brief] = await Promise.all([
     portfolioMeter(user.id),
     needsForOwner(user.id),
     listingsForOwner(user.id),
@@ -30,6 +32,7 @@ export default async function Dashboard() {
       "SELECT id, state, created_at FROM runs WHERE owner_id = ? ORDER BY created_at DESC LIMIT 5",
       [user.id]
     ),
+    morningBrief(user.id),
   ]);
 
   const open = needs.filter((n) =>
@@ -49,6 +52,8 @@ export default async function Dashboard() {
         }
         action={{ href: "/app/needs/new", label: "New request" }}
       />
+
+      <MorningBrief brief={brief} />
 
       <div className="grid gap-4 p-6 lg:grid-cols-2">
         <Card

@@ -234,6 +234,19 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
     return () => clearInterval(interval);
   }, [refreshSide]);
 
+  // Keep the operator token in the address bar. Storage alone is not
+  // enough: the passkey round-trip can navigate this tab, and coming back
+  // to a bare URL would otherwise leave the controls dead. With it in the
+  // URL, a refresh, a back-navigation, or a re-opened tab all stay armed.
+  useEffect(() => {
+    const token = demoToken();
+    if (!token || replayId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("token") === token) return;
+    url.searchParams.set("token", token);
+    window.history.replaceState(null, "", url.toString());
+  }, [replayId]);
+
   const toggleMute = useCallback(() => {
     setMuted(!isMuted());
     setMutedState(isMuted());

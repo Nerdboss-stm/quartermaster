@@ -26,6 +26,7 @@ export default function Controller({
   onReset,
   replayId,
   armed = true,
+  onForgetToken,
 }: {
   steps: Step[];
   muted: boolean;
@@ -34,6 +35,8 @@ export default function Controller({
   replayId: string | null;
   /** Whether this browser holds the operator token. */
   armed?: boolean;
+  /** Drop the stored operator token (key: T). */
+  onForgetToken?: () => void;
 }) {
   const [armedIndex, setArmed] = useState(0);
   const [states, setStates] = useState<Record<string, StepState>>({});
@@ -80,6 +83,8 @@ export default function Controller({
         onReset();
       } else if (e.key === "m" || e.key === "M") {
         onToggleMute();
+      } else if (e.key === "t" || e.key === "T") {
+        onForgetToken?.();
       } else if (/^[1-9]$/.test(e.key)) {
         const idx = Number(e.key) - 1;
         if (idx < steps.length) setArmed(idx);
@@ -121,7 +126,7 @@ export default function Controller({
             );
           })}
           <span className="ml-1 text-neutral-600">
-            {steps[armedIndex]?.label} · SPACE run · ←→ arm · R reset · M mute
+            {steps[armedIndex]?.label} · SPACE run · ←→ arm · R reset · M mute · T drop token
           </span>
           {armed ? null : (
             <span className="border border-amber-400 px-1 uppercase tracking-widest text-amber-400">

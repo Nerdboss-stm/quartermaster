@@ -35,26 +35,34 @@ const TOKEN_KEY = "qm.demo.token";
 
 /**
  * The operator carries the demo token in the URL (?token=...). Remember it
- * for the tab, because the passkey round-trip and any reload would
- * otherwise drop it and every control would start failing mid-take.
- * Session-scoped, so closing the tab forgets it and a shared link stays
- * read-only.
+ * for this browser: the passkey round-trip opens a second tab, and any
+ * reload drops the query string, so anything narrower than origin-scoped
+ * storage leaves controls dead partway through a take. A visitor who never
+ * had the token still gets a read-only console; clear it with "T".
  */
 function demoToken(): string | null {
   if (typeof window === "undefined") return null;
   const fromUrl = new URLSearchParams(window.location.search).get("token");
   if (fromUrl) {
     try {
-      window.sessionStorage.setItem(TOKEN_KEY, fromUrl);
+      window.localStorage.setItem(TOKEN_KEY, fromUrl);
     } catch {
       // private mode: fall back to the URL for this page view
     }
     return fromUrl;
   }
   try {
-    return window.sessionStorage.getItem(TOKEN_KEY);
+    return window.localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
+  }
+}
+
+export function forgetDemoToken(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // nothing to clear
   }
 }
 
@@ -344,6 +352,10 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
           muted={muted}
           onToggleMute={toggleMute}
           armed={typeof window !== "undefined" && !!demoToken()}
+          onForgetToken={() => {
+            forgetDemoToken();
+            window.location.reload();
+          }}
           onReset={resetView}
           replayId={replayId}
         />

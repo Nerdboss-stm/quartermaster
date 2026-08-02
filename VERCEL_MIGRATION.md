@@ -65,6 +65,21 @@ pnpm demo:core                                        # SQLite path
 DATABASE_URL=postgres://... pnpm db:migrate           # Postgres schema
 ```
 
+## Deploying
+
+The Vercel project's **Root Directory is `apps/console`** and the framework
+preset is Next.js, so no `vercel.json` is needed; a repo-root one is ignored
+under that setting and was removed to avoid a stale second source of truth.
+
+The project was originally created from a CLI upload with **no Git
+connection**, so `git push` does not deploy and a dashboard "Redeploy"
+merely rebuilds the original snapshot. Connect the repo in
+Settings → Git (recommended), or deploy explicitly with `vercel --prod`.
+
+Confirm a deploy actually shipped the current code by checking the build
+log's route table: it must list the `/api/*` routes. Two entries (`/` and
+`/_not-found`) means an old snapshot was rebuilt.
+
 ## Vercel environment variables
 Set these in the Vercel project, NOT in the local `.env`:
 

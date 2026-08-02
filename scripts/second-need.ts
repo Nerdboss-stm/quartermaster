@@ -12,6 +12,7 @@ import { usd } from "../apps/console/lib/money";
 import { portfolioMeter } from "../apps/console/lib/portfolio";
 import type { Need } from "../apps/console/lib/registry";
 import { settleRun } from "../apps/console/lib/settlement";
+import { DEMO_OWNER } from "../apps/console/lib/tenant";
 
 /** Beat 11: the hours-later incidental. Prices to exactly 1800c against
  *  agent B's list (L40S 48GB x 2h x 900c), within budget, so no
@@ -26,7 +27,7 @@ export function secondNeed(): Need {
 }
 
 export async function runSecondNeed(): Promise<void> {
-  const { runId, verdict } = await runBuyerAgent(secondNeed());
+  const { runId, verdict } = await runBuyerAgent(secondNeed(), DEMO_OWNER);
   if (!verdict || verdict.decision !== "EXECUTE") {
     throw new Error(
       `beat 11 expected EXECUTE, got ${verdict?.decision ?? "no verdict"}: failing closed`
@@ -36,7 +37,7 @@ export async function runSecondNeed(): Promise<void> {
     autonomous: true,
   });
   console.log(`settled autonomously [NO HUMAN IN LOOP]: ${s.receiptText}`);
-  const meter = await portfolioMeter();
+  const meter = await portfolioMeter(DEMO_OWNER);
   console.log(
     `portfolio: ${usd(meter.portfolio.spent_cents)} of ${usd(meter.portfolio.cap_cents)} this cycle`
   );

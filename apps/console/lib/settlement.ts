@@ -1,9 +1,9 @@
 import { isCycleDeclined, type ChargeCredentials } from "@quartermaster/prava-client";
 import type { Verdict } from "mandate-arbiter";
-import { insertTraceEvent, setRunState, sqlRun, traceEventsSince } from "./db";
+import { insertTraceEvent, runOwner, setRunState, sqlRun, traceEventsSince } from "./db";
 import { buildEscalator } from "./escalation-flow";
 import type { EnvelopeRow } from "./envelopes";
-import { MERCHANT } from "./merchant";
+import { getUser, merchantForOwner } from "./tenant";
 import { usd } from "./money";
 import { portfolioMeter } from "./portfolio";
 import { prava, settlementMode } from "./prava";
@@ -61,7 +61,10 @@ export async function settleRun(
   if (!quote) throw new Error(`unknown quote ${quoteId}: failing closed`);
 
   const mode = settlementMode();
-  const envelope = await routeCharge(runId, quote.amountCents, MERCHANT.name);
+  const ownerId = await runOwner(runId);
+  const owner = await getUser(ownerId);
+  const merchant = merchantForOwner(ownerId);
+  const envelope = await routeCharge(runId, quote.amountCents, merchant.name);
 
   // The sandbox does not always clear a FAILED charge's idempotency key
   // (DUPLICATE_RESOURCE observed), so each retry derives a unique
@@ -141,10 +144,14 @@ export async function settleRun(
   const authorizingPaths = verdict.results
     .filter((r) => r.ok)
     .map((r) => r.path);
+  const supplierOwnerId = quote.counterpartyId.startsWith("sup_")
+    ? quote.counterpartyId.slice(4)
+    : null;
   await sqlRun(
     `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
-       clause_paths, amount_cents, currency, mode, prava_session_id, prava_txn_id, merchant_ref, at)
-     VALUES (?, ?, ?, 'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       clause_paths, amount_cents, currency, mode, prava_session_id, prava_txn_id, merchant_ref, at,
+       owner_id, counterparty_id, supplier_owner_id)
+     VALUES (?, ?, ?, 'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       runId,
       verdict.mandateId,
@@ -158,10 +165,13 @@ export async function settleRun(
       charge.transactionId,
       merchantRef,
       new Date().toISOString(),
+      ownerId,
+      quote.counterpartyId,
+      supplierOwnerId,
     ]
   );
 
-  const meter = await portfolioMeter();
+  const meter = await portfolioMeter(ownerId);
   const receiptText =
     `Charged ${usd(quote.amountCents)} to agent_b from Envelope ${envelope.label}.` +
     (opts.autonomous
@@ -181,7 +191,7 @@ export async function settleRun(
   await setRunState(runId, "settled");
 
   try {
-    await buildEscalator(runId).sendText(receiptText);
+    await buildEscalator(runId, owner?.phone ?? undefined).sendText(receiptText);
     await insertTraceEvent(runId, { type: "receipt_sent", text: receiptText });
   } catch (err) {
     // Settlement already stands; a receipt failure must not unwind it.

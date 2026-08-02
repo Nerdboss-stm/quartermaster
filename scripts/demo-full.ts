@@ -14,6 +14,7 @@ import { insertTraceEvent, setRunState, sqlAll, upsertOffer } from "../apps/cons
 import {
   awaitNewMandate,
   createEnvelopeSession,
+  ENVELOPE_SPECS,
   findReusableEnvelope,
   knownMandateIds,
   storeEnvelope,
@@ -27,6 +28,7 @@ import { portfolioMeter } from "../apps/console/lib/portfolio";
 import { findQuote } from "../apps/console/lib/quotes";
 import { OfferSchema } from "../apps/console/lib/registry";
 import { settleRun } from "../apps/console/lib/settlement";
+import { DEMO_OWNER, getUser } from "../apps/console/lib/tenant";
 import { printLedger, printMeter } from "./report";
 import { POLICY_AMOUNT_CAP_CENTS, seedPolicyMandate } from "./seed-mandate";
 import { runSecondNeed } from "./second-need";
@@ -48,21 +50,23 @@ async function ensureEnvelope(
   label: EnvelopeLabel,
   touchNo: number
 ): Promise<EnvelopeRow> {
-  const reusable = await findReusableEnvelope(label);
+  const reusable = await findReusableEnvelope(DEMO_OWNER, label);
   if (reusable) {
     console.log(
       `envelope ${label}: reusing unused ${reusable.id} (${reusable.prava_mandate_id}, cycle open)`
     );
     return reusable;
   }
-  const known = await knownMandateIds();
-  const { approvalUrl } = await createEnvelopeSession(label);
+  const demo = await getUser(DEMO_OWNER);
+  if (!demo) throw new Error("demo owner missing: run pnpm db:migrate");
+  const known = await knownMandateIds(demo.prava_customer_id);
+  const { approvalUrl } = await createEnvelopeSession(demo, { label, ...ENVELOPE_SPECS[label] });
   humanTouch(
     touchNo,
     `Passkey-approve Envelope ${label} (team card ...2226, enrolled Chrome). Waiting...\n    ${approvalUrl}`
   );
-  const mandate = await awaitNewMandate(known);
-  const row = await storeEnvelope(label, mandate);
+  const mandate = await awaitNewMandate(demo.prava_customer_id, known);
+  const row = await storeEnvelope(DEMO_OWNER, label, mandate);
   console.log(
     `envelope ${label}: ${row.id} prava=${mandate.id} merchant=${row.merchant_name} cap=${usd(row.per_charge_cap_cents)}/charge renews=${row.renews_at}`
   );
@@ -93,7 +97,7 @@ async function main(): Promise<void> {
   beat(4, "Negotiation flash. One visible exchange. Quote: $47.00");
   beat(5, "Mandate evaluation. Arbiter walks every clause");
   beat(6, "REFUSE. $47.00 vs the $40.00 per-charge policy cap (LOCK 1)");
-  const { runId, verdict } = await runBuyerAgent(demoNeed());
+  const { runId, verdict } = await runBuyerAgent(demoNeed(), DEMO_OWNER);
   if (!verdict) throw new Error("run produced no verdict: failing closed");
   console.log(
     `verdict: ${verdict.decision}${verdict.determinedBy[0] ? ` (${verdict.determinedBy[0].detail})` : ""}`

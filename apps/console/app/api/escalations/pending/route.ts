@@ -1,3 +1,4 @@
+import { ownerOrDemo } from "@/lib/auth";
 import { latestPendingEscalation } from "@/lib/escalation-flow";
 
 export const runtime = "nodejs";
@@ -5,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const pending = await latestPendingEscalation();
+    const pending = await latestPendingEscalation(await ownerOrDemo());
     if (!pending) return Response.json({ pending: null });
     return Response.json({
       pending: {

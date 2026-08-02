@@ -10,6 +10,7 @@
     "@openai/agents": "^0.14.2",
     "@quartermaster/escalation": "workspace:*",
     "@quartermaster/prava-client": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "mandate-arbiter": "workspace:*",
     "next": "^14.2.5",
@@ -20,6 +21,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.5.0",
     "@types/pg": "^8.20.3",

@@ -1,7 +1,7 @@
 import { Agent, run, tool } from "@openai/agents";
 import type { Verdict } from "mandate-arbiter";
 import { z } from "zod";
-import { createRun, insertTraceEvent, setRunState } from "./db";
+import { createRun, insertTraceEvent, setRunState, sqlRun } from "./db";
 import { raiseEscalation } from "./escalation-flow";
 import { evaluateQuote } from "./evaluate-quote";
 import { findQuote, type Quote } from "./quotes";
@@ -203,12 +203,19 @@ export interface BuyerRunResult {
   finalOutput: string;
 }
 
-export async function runBuyerAgent(need: Need): Promise<BuyerRunResult> {
+export async function runBuyerAgent(
+  need: Need,
+  ownerId: string,
+  needId?: string
+): Promise<BuyerRunResult> {
   const model = process.env.OPENAI_MODEL;
   if (!model) throw new Error("OPENAI_MODEL is not set");
 
   const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  await createRun(runId);
+  await createRun(runId, ownerId);
+  if (needId) {
+    await sqlRun("UPDATE runs SET need_id = ? WHERE id = ?", [needId, runId]);
+  }
   const ctx: RunCtx = { runId, need, negotiated: false, verdict: null };
 
   await insertTraceEvent(runId, {

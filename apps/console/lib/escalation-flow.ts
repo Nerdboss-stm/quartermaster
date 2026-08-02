@@ -9,16 +9,14 @@ import {
   type ParsedReply,
 } from "@quartermaster/escalation";
 import type { Verdict } from "mandate-arbiter";
-import { insertTraceEvent, setRunState, sqlGet, sqlRun } from "./db";
+import { insertTraceEvent, runOwner, setRunState, sqlGet, sqlRun } from "./db";
+import { getUser } from "./tenant";
 
-export function escalationChannel(): "linq" | "console" {
+export function escalationChannel(toNumber?: string): "linq" | "console" {
   const wanted = process.env.ESCALATION_CHANNEL === "console" ? "console" : "linq";
   if (wanted === "linq") {
-    if (
-      !process.env.LINQ_API_KEY ||
-      !process.env.LINQ_FROM_NUMBER ||
-      !process.env.LINQ_TO_NUMBER
-    ) {
+    const to = toNumber ?? process.env.LINQ_TO_NUMBER;
+    if (!process.env.LINQ_API_KEY || !process.env.LINQ_FROM_NUMBER || !to) {
       console.warn(
         "escalation: linq channel selected but LINQ_API_KEY/LINQ_FROM_NUMBER/LINQ_TO_NUMBER incomplete; falling back to console"
       );
@@ -28,12 +26,15 @@ export function escalationChannel(): "linq" | "console" {
   return wanted;
 }
 
-export function buildEscalator(runId: string | null): Escalator {
-  if (escalationChannel() === "linq") {
+export function buildEscalator(
+  runId: string | null,
+  toNumber?: string
+): Escalator {
+  if (escalationChannel(toNumber) === "linq") {
     return new LinqEscalator({
       apiKey: process.env.LINQ_API_KEY!,
       fromNumber: process.env.LINQ_FROM_NUMBER!,
-      toNumber: process.env.LINQ_TO_NUMBER!,
+      toNumber: (toNumber ?? process.env.LINQ_TO_NUMBER)!,
     });
   }
   return new ConsoleEscalator((kind, payload) => {
@@ -48,6 +49,8 @@ export async function raiseEscalation(
   verdict: Verdict,
   quoteId: string
 ): Promise<void> {
+  const ownerId = await runOwner(runId);
+  const owner = await getUser(ownerId);
   const failingDetail = verdict.determinedBy[0]?.detail ?? "policy refusal";
   const e: Escalation = {
     runId,
@@ -57,8 +60,8 @@ export async function raiseEscalation(
     options: ["APPROVE", "DECLINE", "RAISE CAP TO $X"],
   };
   await sqlRun(
-    `INSERT INTO escalations (run_id, mandate_id, quote_id, failing_detail, options, status, at)
-     VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+    `INSERT INTO escalations (run_id, mandate_id, quote_id, failing_detail, options, status, at, owner_id)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
     [
       runId,
       e.mandateId,
@@ -66,9 +69,10 @@ export async function raiseEscalation(
       failingDetail,
       JSON.stringify(e.options),
       new Date().toISOString(),
+      ownerId,
     ]
   );
-  const channel = escalationChannel();
+  const channel = escalationChannel(owner?.phone ?? undefined);
   await insertTraceEvent(runId, {
     type: "escalation_requested",
     channel,
@@ -81,7 +85,7 @@ export async function raiseEscalation(
     text: escalationText(e),
     toLast4: process.env.DEMO_PHONE_LAST4 ?? null,
   });
-  await buildEscalator(runId).sendEscalation(e);
+  await buildEscalator(runId, owner?.phone ?? undefined).sendEscalation(e);
 }
 
 export interface PendingEscalation {
@@ -94,9 +98,12 @@ export interface PendingEscalation {
   at: string;
 }
 
-export async function latestPendingEscalation(): Promise<PendingEscalation | null> {
+export async function latestPendingEscalation(
+  ownerId: string
+): Promise<PendingEscalation | null> {
   const row = await sqlGet<PendingEscalation>(
-    "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, at FROM escalations WHERE status = 'pending' ORDER BY id DESC LIMIT 1"
+    "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, at FROM escalations WHERE status = 'pending' AND owner_id = ? ORDER BY id DESC LIMIT 1",
+    [ownerId]
   );
   return row ?? null;
 }

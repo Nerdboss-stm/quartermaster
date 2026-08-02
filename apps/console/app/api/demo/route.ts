@@ -1,4 +1,6 @@
 import { latestRunId, sqlAll } from "@/lib/db";
+import { DEMO_OWNER, getUser } from "@/lib/tenant";
+import { ENVELOPE_SPECS } from "@/lib/envelopes";
 import { authorizeDemoControl } from "@/lib/demo-guard";
 import {
   amendAndReEvaluate,
@@ -64,8 +66,13 @@ export async function POST(req: Request) {
         if (label !== "A" && label !== "B") {
           return Response.json({ error: "label must be A or B" }, { status: 400 });
         }
-        const known = await knownMandateIds();
-        const { approvalUrl } = await createEnvelopeSession(label);
+        const demo = await getUser(DEMO_OWNER);
+        if (!demo) return Response.json({ error: "demo owner missing" }, { status: 500 });
+        const known = await knownMandateIds(demo.prava_customer_id);
+        const { approvalUrl } = await createEnvelopeSession(demo, {
+          label,
+          ...ENVELOPE_SPECS[label],
+        });
         return Response.json({ approvalUrl, known: [...known] });
       }
 
@@ -82,8 +89,10 @@ export async function POST(req: Request) {
             )
           ).map((r) => r.prava_mandate_id)
         );
-        const mandate = await awaitNewMandate(known, 4 * 60_000);
-        const row = await storeEnvelope(label, mandate);
+        const demoUser = await getUser(DEMO_OWNER);
+        if (!demoUser) return Response.json({ error: "demo owner missing" }, { status: 500 });
+        const mandate = await awaitNewMandate(demoUser.prava_customer_id, known, 4 * 60_000);
+        const row = await storeEnvelope(DEMO_OWNER, label, mandate);
         return Response.json({ envelope: row });
       }
 
@@ -93,13 +102,13 @@ export async function POST(req: Request) {
       }
 
       case "replyStatus": {
-        const runId = body.runId ?? await latestRunId();
+        const runId = body.runId ?? await latestRunId(DEMO_OWNER);
         if (!runId) return Response.json({ reply: null });
         return Response.json({ reply: await recordedReply(runId) });
       }
 
       case "amend": {
-        const runId = body.runId ?? await latestRunId();
+        const runId = body.runId ?? await latestRunId(DEMO_OWNER);
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
         const prior = await latestVerdict(runId);
         if (!prior) return Response.json({ error: "no verdict" }, { status: 409 });
@@ -108,7 +117,7 @@ export async function POST(req: Request) {
       }
 
       case "settle": {
-        const runId = body.runId ?? await latestRunId();
+        const runId = body.runId ?? await latestRunId(DEMO_OWNER);
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
         const verdict = await latestVerdict(runId);
         if (!verdict || verdict.decision !== "EXECUTE") {

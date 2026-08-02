@@ -1,4 +1,4 @@
-import { insertTraceEvent } from "./db";
+import { insertTraceEvent, runOwner } from "./db";
 import {
   currentEnvelopes,
   envelopeCycleOpen,
@@ -24,8 +24,9 @@ export async function routeCharge(
   amountCents: number,
   merchantName: string
 ): Promise<EnvelopeRow> {
+  const ownerId = await runOwner(runId);
   const notes: string[] = [];
-  for (const env of await currentEnvelopes()) {
+  for (const env of await currentEnvelopes(ownerId)) {
     if (!merchantMatch(env.merchant_name, merchantName)) {
       notes.push(`${env.label}: merchant mismatch`);
       continue;

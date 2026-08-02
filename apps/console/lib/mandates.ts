@@ -1,14 +1,15 @@
 import type { LedgerReader, Mandate } from "mandate-arbiter";
 import { sqlAll, sqlGet } from "./db";
 
-/** Exactly one active mandate, or the answer is NO (fail closed). */
-export async function loadActiveMandate(): Promise<Mandate> {
+/** Exactly one active mandate for this owner, or the answer is NO. */
+export async function loadActiveMandate(ownerId: string): Promise<Mandate> {
   const rows = await sqlAll<{ id: string; body: string }>(
-    "SELECT id, body FROM mandates WHERE status = 'active'"
+    "SELECT id, body FROM mandates WHERE status = 'active' AND owner_id = ?",
+    [ownerId]
   );
   if (rows.length !== 1) {
     throw new Error(
-      `expected exactly 1 active mandate, found ${rows.length}: failing closed`
+      `expected exactly 1 active mandate for ${ownerId}, found ${rows.length}: failing closed`
     );
   }
   return JSON.parse(rows[0].body) as Mandate;

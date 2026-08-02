@@ -8,6 +8,7 @@ try {
 }
 
 import { runBuyerAgent } from "../apps/console/lib/agent-a";
+import { DEMO_OWNER } from "../apps/console/lib/tenant";
 import type { Need } from "../apps/console/lib/registry";
 
 /** Beat 2-8 demo need: prices to exactly 4700c against agent B's list. */
@@ -23,7 +24,7 @@ export function demoNeed(): Need {
 async function main() {
   const need = demoNeed();
   console.log(`start-run: need ${JSON.stringify(need)}`);
-  const { runId, verdict } = await runBuyerAgent(need);
+  const { runId, verdict } = await runBuyerAgent(need, DEMO_OWNER);
   console.log(`start-run: ${runId} -> ${verdict ? verdict.decision : "NO VERDICT (failed)"}`);
 }
 

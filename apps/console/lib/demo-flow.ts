@@ -7,6 +7,7 @@ import { usd } from "./money";
 import { findQuote } from "./quotes";
 import type { Need } from "./registry";
 import { settleRun, type SettlementResult } from "./settlement";
+import { DEMO_OWNER } from "./tenant";
 
 /** Beat 2-8 need: prices to exactly 4700c against agent B's list
  *  (A100 80GB x 4h x 1175c), over the $40 policy cap on purpose. */
@@ -34,7 +35,7 @@ export async function runFirstNeed(): Promise<{
   runId: string;
   verdict: Verdict | null;
 }> {
-  const { runId, verdict } = await runBuyerAgent(demoNeed());
+  const { runId, verdict } = await runBuyerAgent(demoNeed(), DEMO_OWNER);
   return { runId, verdict };
 }
 
@@ -95,7 +96,7 @@ export async function runSecondNeedFlow(): Promise<{
   runId: string;
   settlement: SettlementResult;
 }> {
-  const { runId, verdict } = await runBuyerAgent(secondNeed());
+  const { runId, verdict } = await runBuyerAgent(secondNeed(), DEMO_OWNER);
   if (!verdict || verdict.decision !== "EXECUTE") {
     throw new Error(
       `beat 11 expected EXECUTE, got ${verdict?.decision ?? "no verdict"}: failing closed`

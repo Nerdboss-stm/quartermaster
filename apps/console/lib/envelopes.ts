@@ -1,7 +1,7 @@
 import type { PravaMandate } from "@quartermaster/prava-client";
 import { sqlAll, sqlGet, sqlRun } from "./db";
-import { MERCHANT } from "./merchant";
-import { prava, pravaCustomerId, pravaUserEmail } from "./prava";
+import { merchantForOwner, type UserRow } from "./tenant";
+import { prava } from "./prava";
 
 export interface EnvelopeRow {
   id: string;
@@ -20,16 +20,28 @@ export const ENVELOPE_SPECS = {
 
 export type EnvelopeLabel = keyof typeof ENVELOPE_SPECS;
 
+export interface EnvelopeSpec {
+  label: string;
+  totalCents: number;
+  product: string;
+}
+
+/**
+ * Opens a Prava mandate-setup session. The owner approves it with their
+ * passkey; that approval is the only thing standing between an agent and
+ * this money, and it is never automated. The cap is whatever the owner
+ * chose — the fixed A/B specs below are only the demo's defaults.
+ */
 export async function createEnvelopeSession(
-  label: EnvelopeLabel
+  owner: UserRow,
+  spec: EnvelopeSpec
 ): Promise<{ approvalUrl: string }> {
-  const spec = ENVELOPE_SPECS[label];
   const consoleUrl = process.env.CONSOLE_URL ?? "http://localhost:3000";
   const { approvalUrl } = await prava().createMandateSetupSession({
-    userId: pravaCustomerId(),
-    userEmail: pravaUserEmail(),
+    userId: owner.prava_customer_id,
+    userEmail: owner.email,
     totalAmountCents: spec.totalCents,
-    merchant: MERCHANT,
+    merchant: merchantForOwner(owner.id),
     productDescription: spec.product,
     recurringFrequency: "weekly",
     maxCharges: 4,
@@ -39,20 +51,21 @@ export async function createEnvelopeSession(
   return { approvalUrl };
 }
 
-export async function knownMandateIds(): Promise<Set<string>> {
-  const mandates = await prava().listMandates(pravaCustomerId());
+export async function knownMandateIds(customerId: string): Promise<Set<string>> {
+  const mandates = await prava().listMandates(customerId);
   return new Set(mandates.map((m) => m.id));
 }
 
 /** Poll List Mandates until a new active standing mandate appears (this is
  *  how the mandate id is discovered after passkey approval). */
 export async function awaitNewMandate(
+  customerId: string,
   known: Set<string>,
   timeoutMs = 6 * 60_000
 ): Promise<PravaMandate> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const mandates = await prava().listMandates(pravaCustomerId());
+    const mandates = await prava().listMandates(customerId);
     const fresh = mandates.find(
       (m) =>
         !known.has(m.id) &&
@@ -65,7 +78,8 @@ export async function awaitNewMandate(
 }
 
 export async function storeEnvelope(
-  label: EnvelopeLabel,
+  ownerId: string,
+  label: string,
   m: PravaMandate
 ): Promise<EnvelopeRow> {
   const row: EnvelopeRow = {
@@ -78,8 +92,8 @@ export async function storeEnvelope(
     created_at: new Date().toISOString(),
   };
   await sqlRun(
-    `INSERT INTO envelopes (id, label, prava_mandate_id, merchant_name, per_charge_cap_cents, renews_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO envelopes (id, label, prava_mandate_id, merchant_name, per_charge_cap_cents, renews_at, created_at, owner_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.label,
@@ -88,6 +102,7 @@ export async function storeEnvelope(
       row.per_charge_cap_cents,
       row.renews_at,
       row.created_at,
+      ownerId,
     ]
   );
   return row;
@@ -117,9 +132,10 @@ export async function envelopeCycleOpen(env: EnvelopeRow): Promise<boolean> {
 }
 
 /** Newest envelope per label whose cycle window is still current. */
-export async function currentEnvelopes(): Promise<EnvelopeRow[]> {
+export async function currentEnvelopes(ownerId: string): Promise<EnvelopeRow[]> {
   const rows = await sqlAll<EnvelopeRow>(
-    "SELECT * FROM envelopes ORDER BY label ASC, created_at DESC"
+    "SELECT * FROM envelopes WHERE owner_id = ? ORDER BY label ASC, created_at DESC",
+    [ownerId]
   );
   const seen = new Set<string>();
   const out: EnvelopeRow[] = [];
@@ -136,9 +152,10 @@ export async function currentEnvelopes(): Promise<EnvelopeRow[]> {
 /** An unused same-cycle envelope can be reused by a rerun; a used one
  *  cannot re-charge until renewal (network rule). */
 export async function findReusableEnvelope(
-  label: EnvelopeLabel
+  ownerId: string,
+  label: string
 ): Promise<EnvelopeRow | null> {
-  const env = (await currentEnvelopes()).find((e) => e.label === label);
+  const env = (await currentEnvelopes(ownerId)).find((e) => e.label === label);
   if (!env) return null;
   return (await envelopeCycleOpen(env)) ? env : null;
 }

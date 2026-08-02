@@ -11,6 +11,7 @@ try {
 import { upsertOffer } from "../apps/console/lib/db";
 import { OfferSchema } from "../apps/console/lib/registry";
 import { runBuyerAgent } from "../apps/console/lib/agent-a";
+import { DEMO_OWNER } from "../apps/console/lib/tenant";
 import { seedPolicyMandate, POLICY_MANDATE_ID } from "./seed-mandate";
 import { demoNeed } from "./start-run";
 
@@ -32,7 +33,7 @@ async function main() {
 
   const need = demoNeed();
   console.log(`demo-core: need ${JSON.stringify(need)}`);
-  const { runId, verdict } = await runBuyerAgent(need);
+  const { runId, verdict } = await runBuyerAgent(need, DEMO_OWNER);
 
   console.log("");
   console.log(`RUN      ${runId}`);

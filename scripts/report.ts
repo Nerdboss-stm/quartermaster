@@ -1,6 +1,7 @@
 import { sqlAll } from "../apps/console/lib/db";
 import { usd } from "../apps/console/lib/money";
 import { portfolioMeter } from "../apps/console/lib/portfolio";
+import { DEMO_OWNER } from "../apps/console/lib/tenant";
 
 export async function printLedger(): Promise<void> {
   const rows = await sqlAll<Record<string, unknown>>(
@@ -26,7 +27,7 @@ export async function printLedger(): Promise<void> {
 }
 
 export async function printMeter(): Promise<void> {
-  const meter = await portfolioMeter();
+  const meter = await portfolioMeter(DEMO_OWNER);
   console.log(`\nPORTFOLIO [${meter.environment}]`);
   for (const e of meter.envelopes) {
     console.log(

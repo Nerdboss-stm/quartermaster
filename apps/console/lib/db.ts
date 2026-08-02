@@ -65,20 +65,36 @@ export async function traceEventsSince(
   );
 }
 
-export async function createRun(id: string): Promise<void> {
-  await sqlRun("INSERT INTO runs (id, state, created_at) VALUES (?, 'running', ?)", [
-    id,
-    new Date().toISOString(),
-  ]);
+export async function createRun(id: string, ownerId: string): Promise<void> {
+  await sqlRun(
+    "INSERT INTO runs (id, state, created_at, owner_id) VALUES (?, 'running', ?, ?)",
+    [id, new Date().toISOString(), ownerId]
+  );
+}
+
+/**
+ * Who a run belongs to. Every money path derives the owner from here
+ * rather than taking it as a parameter, which keeps the engine signatures
+ * unchanged and makes it impossible to settle one account's charge
+ * against another's envelopes. Fails closed on an unknown run.
+ */
+export async function runOwner(runId: string): Promise<string> {
+  const row = await sqlGet<{ owner_id: string }>(
+    "SELECT owner_id FROM runs WHERE id = ?",
+    [runId]
+  );
+  if (!row) throw new Error(`unknown run ${runId}: failing closed`);
+  return row.owner_id;
 }
 
 export async function setRunState(id: string, state: string): Promise<void> {
   await sqlRun("UPDATE runs SET state = ? WHERE id = ?", [state, id]);
 }
 
-export async function latestRunId(): Promise<string | null> {
+export async function latestRunId(ownerId: string): Promise<string | null> {
   const row = await sqlGet<{ id: string }>(
-    "SELECT id FROM runs ORDER BY created_at DESC, id DESC LIMIT 1"
+    "SELECT id FROM runs WHERE owner_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    [ownerId]
   );
   return row?.id ?? null;
 }
@@ -86,12 +102,14 @@ export async function latestRunId(): Promise<string | null> {
 export async function upsertOffer(
   id: string,
   agentId: string,
-  body: unknown
+  body: unknown,
+  ownerId: string | null = null
 ): Promise<void> {
   await sqlRun(
-    `INSERT INTO offers (id, agent_id, body, created_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET agent_id = excluded.agent_id, body = excluded.body`,
-    [id, agentId, JSON.stringify(body), new Date().toISOString()]
+    `INSERT INTO offers (id, agent_id, body, created_at, owner_id) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET agent_id = excluded.agent_id,
+       body = excluded.body, owner_id = excluded.owner_id`,
+    [id, agentId, JSON.stringify(body), new Date().toISOString(), ownerId]
   );
 }
 

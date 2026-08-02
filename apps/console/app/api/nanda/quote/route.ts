@@ -1,4 +1,5 @@
 import { NandaError, nandaQuote } from "@/lib/nanda";
+import { ownerForApiKey } from "@/lib/api-keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    return Response.json(await nandaQuote(body));
+    return Response.json(await nandaQuote(body, await ownerForApiKey(req)));
   } catch (err) {
     if (err instanceof NandaError) {
       console.warn(`nanda quote refused: ${err.code} ${err.message}`);

@@ -1,4 +1,5 @@
 import { NandaError, nandaPay } from "@/lib/nanda";
+import { ownerForApiKey } from "@/lib/api-keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,14 +39,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await nandaPay({
+    const result = await nandaPay(
+      {
       ref: body.ref!,
       runId: body.runId!,
       quoteId: body.quoteId!,
       payer: body.payer!,
       payee: body.payee!,
-      amountCents: body.amountCents!,
-    });
+        amountCents: body.amountCents!,
+      },
+      await ownerForApiKey(req)
+    );
     return Response.json(result);
   } catch (err) {
     if (err instanceof NandaError) {

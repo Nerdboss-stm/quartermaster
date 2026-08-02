@@ -1,6 +1,7 @@
 import { LinqEscalator, verifyLinqSignature } from "@quartermaster/escalation";
 import { sqlRun } from "@/lib/db";
 import { latestPendingEscalation, recordReply } from "@/lib/escalation-flow";
+import { DEMO_OWNER, getUserByPhone } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,7 +96,10 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, ignored: "not the demo chat" });
   }
 
-  const pending = await latestPendingEscalation();
+  const replyFrom = data.sender_handle?.handle ?? "";
+  const sender = replyFrom ? await getUserByPhone(replyFrom) : null;
+  const ownerId = sender?.id ?? DEMO_OWNER;
+  const pending = await latestPendingEscalation(ownerId);
   if (!pending) return Response.json({ ok: true, ignored: "no pending escalation" });
 
   const raw =

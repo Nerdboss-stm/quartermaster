@@ -1,5 +1,5 @@
 import type { Clause, Mandate } from "mandate-arbiter";
-import { insertTraceEvent, sqlTx } from "./db";
+import { insertTraceEvent, runOwner, sqlTx } from "./db";
 import { loadActiveMandate, mandateChainIds } from "./mandates";
 import { settlementMode } from "./prava";
 
@@ -35,14 +35,16 @@ export async function amendActiveMandate(
   newCapCents: number,
   reason: string
 ): Promise<{ oldId: string; newId: string; clausePath: string }> {
-  const old = await loadActiveMandate();
+  const ownerId = await runOwner(runId);
+  const old = await loadActiveMandate(ownerId);
   const next = JSON.parse(JSON.stringify(old)) as Mandate;
   const clausePath = replaceAmountCap(next.root, "root", newCapCents);
   if (!clausePath) {
     throw new Error("active mandate has no amount_cap clause: failing closed");
   }
   const version = (await mandateChainIds(old.id)).length + 1;
-  next.id = `qm_mdt_policy_v${version}`;
+  // Namespaced per owner: two accounts amending at once must not collide.
+  next.id = `qm_mdt_${ownerId}_v${version}`;
   next.issuedAt = new Date().toISOString();
 
   const now = new Date().toISOString();
@@ -50,17 +52,17 @@ export async function amendActiveMandate(
   // row that records the amendment.
   await sqlTx([
     {
-      sql: "INSERT INTO mandates (id, body, status, supersedes, created_at) VALUES (?, ?, 'active', ?, ?)",
-      params: [next.id, JSON.stringify(next), old.id, now],
+      sql: "INSERT INTO mandates (id, body, status, supersedes, created_at, owner_id) VALUES (?, ?, 'active', ?, ?, ?)",
+      params: [next.id, JSON.stringify(next), old.id, now, ownerId],
     },
     {
-      sql: "UPDATE mandates SET status = 'superseded' WHERE id = ?",
-      params: [old.id],
+      sql: "UPDATE mandates SET status = 'superseded' WHERE id = ? AND owner_id = ?",
+      params: [old.id, ownerId],
     },
     {
       sql: `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
-              clause_paths, amount_cents, currency, mode, at)
-            VALUES (?, ?, NULL, 'amendment', 0, ?, 0, ?, ?, ?)`,
+              clause_paths, amount_cents, currency, mode, at, owner_id)
+            VALUES (?, ?, NULL, 'amendment', 0, ?, 0, ?, ?, ?, ?)`,
       params: [
         runId,
         next.id,
@@ -68,6 +70,7 @@ export async function amendActiveMandate(
         next.currency,
         settlementMode(),
         now,
+        ownerId,
       ],
     },
   ]);

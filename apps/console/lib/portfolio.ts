@@ -19,9 +19,9 @@ function findCumulativeCap(clause: Clause): number | null {
   return null;
 }
 
-export async function portfolioMeter() {
+export async function portfolioMeter(ownerId: string) {
   const envelopes = await Promise.all(
-    (await currentEnvelopes()).map(async (env) => ({
+    (await currentEnvelopes(ownerId)).map(async (env) => ({
       label: env.label,
       prava_mandate_id: env.prava_mandate_id,
       per_charge_cap_cents: env.per_charge_cap_cents,
@@ -39,7 +39,7 @@ export async function portfolioMeter() {
   let policy: { cumulative_cents: number; cap_cents: number | null } | null =
     null;
   try {
-    const mandate = await loadActiveMandate();
+    const mandate = await loadActiveMandate(ownerId);
     const ids = await mandateChainIds(mandate.id);
     const placeholders = ids.map(() => "?").join(", ");
     const row = await sqlGet<{ total: number }>(

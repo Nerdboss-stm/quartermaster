@@ -1,5 +1,5 @@
 import { evaluate, type Verdict } from "mandate-arbiter";
-import { insertTraceEvent, setRunState } from "./db";
+import { insertTraceEvent, runOwner, setRunState } from "./db";
 import { ledgerReader, loadActiveMandate } from "./mandates";
 import { findQuote } from "./quotes";
 
@@ -13,7 +13,7 @@ export async function evaluateQuote(
   if (!quote) {
     throw new Error(`unknown quote ${quoteId} in run ${runId}: failing closed`);
   }
-  const mandate = await loadActiveMandate();
+  const mandate = await loadActiveMandate(await runOwner(runId));
   const proposal = {
     id: quote.id,
     counterpartyId: quote.counterpartyId,

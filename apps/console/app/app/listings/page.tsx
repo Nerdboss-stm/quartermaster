@@ -61,15 +61,25 @@ export default async function ListingsPage() {
           {sales.length === 0 ? (
             <Empty
               title="No sales yet."
-              hint="When a buyer's agent picks your listing, the payment lands here — settled through the card network, not an IOU."
+              hint="When a buyer's agent picks your listing, their card is charged for real and the sale is recorded here."
             />
           ) : (
             <>
-              <div className="mb-3 flex items-baseline justify-between border-b border-neutral-900 pb-3">
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-500">
-                  Total earned
-                </span>
-                <Amount cents={earned} className="text-[18px] text-emerald-400" />
+              <div className="mb-3 border-b border-neutral-900 pb-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-500">
+                    Sold
+                  </span>
+                  <Amount
+                    cents={earned}
+                    className="text-[18px] text-emerald-400"
+                  />
+                </div>
+                <p className="mt-1.5 font-sans text-[11px] leading-relaxed text-neutral-600">
+                  Each buyer's card was really charged. QuarterMaster Market is
+                  the merchant of record and holds the money — paying sellers
+                  out is not built in this version.
+                </p>
               </div>
               <ul className="flex flex-col divide-y divide-neutral-900">
                 {sales.map((s) => (

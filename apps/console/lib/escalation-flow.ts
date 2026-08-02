@@ -10,20 +10,36 @@ import {
 } from "@quartermaster/escalation";
 import type { Verdict } from "mandate-arbiter";
 import { insertTraceEvent, runOwner, setRunState, sqlGet, sqlRun } from "./db";
-import { getUser } from "./tenant";
+import { DEMO_OWNER, getUser } from "./tenant";
 
 export function escalationChannel(toNumber?: string): "linq" | "console" {
   const wanted = process.env.ESCALATION_CHANNEL === "console" ? "console" : "linq";
   if (wanted === "linq") {
-    const to = toNumber ?? process.env.LINQ_TO_NUMBER;
-    if (!process.env.LINQ_API_KEY || !process.env.LINQ_FROM_NUMBER || !to) {
+    if (!process.env.LINQ_API_KEY || !process.env.LINQ_FROM_NUMBER || !toNumber) {
       console.warn(
-        "escalation: linq channel selected but LINQ_API_KEY/LINQ_FROM_NUMBER/LINQ_TO_NUMBER incomplete; falling back to console"
+        "escalation: linq channel selected but LINQ_API_KEY/LINQ_FROM_NUMBER or the owner's number is missing; falling back to console"
       );
       return "console";
     }
   }
   return wanted;
+}
+
+/**
+ * Where an owner's refusals and receipts go.
+ *
+ * The number must be the owner's own. There is no environment fallback:
+ * an account that never gave us a phone gets the in-app inbox, because
+ * the alternative is texting somebody else's refusal — with their name and
+ * the amount in it — to whoever the deployment happens to be configured
+ * for. The demo account is the one exception, and it is explicit.
+ */
+export function ownerNumber(
+  ownerId: string,
+  phone: string | null | undefined
+): string | undefined {
+  if (phone) return phone;
+  return ownerId === DEMO_OWNER ? process.env.LINQ_TO_NUMBER : undefined;
 }
 
 export function buildEscalator(
@@ -85,7 +101,7 @@ export async function raiseEscalation(
     text: escalationText(e),
     toLast4: process.env.DEMO_PHONE_LAST4 ?? null,
   });
-  await buildEscalator(runId, owner?.phone ?? undefined).sendEscalation(e);
+  await buildEscalator(runId, ownerNumber(ownerId, owner?.phone)).sendEscalation(e);
 }
 
 export interface PendingEscalation {

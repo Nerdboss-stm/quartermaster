@@ -8,6 +8,8 @@ export interface MarketRow {
   seller: string;
   /** An outside merchant on its own host, or a supplier with an account here. */
   kind: "merchant" | "supplier";
+  /** Seeded so the market is not empty. Labelled on screen: not a real person. */
+  sample: boolean;
   gpu: string;
   vramGb: number;
   rateCentsPerHour: number;
@@ -53,6 +55,7 @@ export async function marketRows(): Promise<MarketRow[]> {
           ? (nameFor.get(ownerId) ?? offer.agentId)
           : MERCHANT.name,
         kind: ownerId ? "supplier" : "merchant",
+        sample: ownerId?.startsWith("usr_seed_") ?? false,
         gpu: sku.gpu,
         vramGb: sku.vramGb,
         rateCentsPerHour: sku.rateCentsPerHour,

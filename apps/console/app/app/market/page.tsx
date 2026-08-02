@@ -49,6 +49,7 @@ export default async function MarketPage() {
                       {r.kind === "merchant" ? (
                         <Badge>own host</Badge>
                       ) : null}
+                      {r.sample ? <Badge>sample seller</Badge> : null}
                     </span>
                     <Mono className="text-[10px] text-neutral-700">
                       {r.agentId}
@@ -78,6 +79,14 @@ export default async function MarketPage() {
           quote and may haggle once — what comes back is the price the arbiter
           rules on, never the number on this page.
         </p>
+        {rows.some((r) => r.sample) ? (
+          <p className="mt-2 max-w-2xl font-sans text-[12px] leading-relaxed text-neutral-600">
+            Sellers marked <span className="text-neutral-400">sample seller</span>{" "}
+            are seeded accounts, not real people, so the market is not empty
+            while this is a sandbox. They quote and negotiate with exactly the
+            same code a real seller would.
+          </p>
+        ) : null}
       </div>
     </>
   );

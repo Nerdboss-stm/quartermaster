@@ -1,7 +1,11 @@
 import type { ParsedReply } from "@quartermaster/escalation";
 import { amendActiveMandate } from "./amendments";
 import { insertTraceEvent, setRunState } from "./db";
-import { buildEscalator, type PendingEscalation } from "./escalation-flow";
+import {
+  buildEscalator,
+  ownerNumber,
+  type PendingEscalation,
+} from "./escalation-flow";
 import { evaluateQuote } from "./evaluate-quote";
 import { needForRun, setNeedState } from "./needs";
 import { findQuote } from "./quotes";
@@ -47,7 +51,10 @@ export async function continueAfterReply(
   }
 
   const owner = await getUser(need.owner_id);
-  const notify = buildEscalator(runId, owner?.phone ?? undefined);
+  const notify = buildEscalator(
+    runId,
+    ownerNumber(need.owner_id, owner?.phone)
+  );
 
   if (parsed.action === "decline") {
     await insertTraceEvent(runId, { type: "owner_declined" });

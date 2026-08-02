@@ -1,13 +1,9 @@
 import { z } from "zod";
 import { currentUser } from "@/lib/auth";
-import { tryRunNeed } from "@/lib/matcher";
 import { createNeed, needsForOwner } from "@/lib/needs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Posting a need attempts the purchase inline, which can run the agent,
-// the arbiter and a settlement.
-export const maxDuration = 300;
 
 const NeedInputSchema = z.object({
   vramGb: z.number().int().positive().max(1024),
@@ -48,9 +44,10 @@ export async function POST(req: Request) {
     phone: user.phone,
   });
 
-  // Try immediately. If supply exists the whole thing can be done before
-  // the response returns; if not, it stays pending and a later trigger
-  // picks it up — which is what "post it and go to sleep" means.
-  const outcome = await tryRunNeed(need.id);
-  return Response.json({ need, outcome });
+  // Return as soon as it is recorded. The work itself is started by the
+  // caller against /api/needs/<id>/run and watched live, because a person
+  // who just told an agent to spend their money should get to see it
+  // happen rather than a spinner. Nobody watching is fine too: the need
+  // sits pending and a later trigger claims it.
+  return Response.json({ need });
 }

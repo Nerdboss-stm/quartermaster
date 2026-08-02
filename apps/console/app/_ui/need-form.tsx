@@ -1,13 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import LiveRun from "./live-run";
 
 interface Outcome {
   state: string;
   runId?: string;
   detail?: string;
 }
+
+/** States a need stops moving in. */
+const TERMINAL = [
+  "settled",
+  "escalated",
+  "refused",
+  "declined",
+  "failed",
+  "expired",
+];
 
 const PRESETS = [
   { label: "Fine-tune overnight", vramGb: 80, durationH: 4, budget: "40.00" },
@@ -22,6 +33,8 @@ export default function NeedForm({ hasPhone }: { hasPhone: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needId, setNeedId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [form, setForm] = useState({
     vramGb: "80",
@@ -51,21 +64,40 @@ export default function NeedForm({ hasPhone }: { hasPhone: boolean }) {
           ).toISOString(),
         }),
       });
-      const json = (await res.json()) as { error?: string; outcome?: Outcome };
-      if (!res.ok) {
+      const json = (await res.json()) as {
+        error?: string;
+        need?: { id: string };
+      };
+      if (!res.ok || !json.need) {
         setError(json.error ?? "could not post that request");
+        setBusy(false);
         return;
       }
-      setOutcome(json.outcome ?? { state: "pending" });
+      // The need is recorded. Start the work but do not wait on it — the
+      // watching happens below, live, while it runs.
+      setNeedId(json.need.id);
+      void fetch(`/api/needs/${json.need.id}/run`, { method: "POST" }).catch(
+        () => {}
+      );
       router.refresh();
     } catch {
       setError("could not reach the server");
-    } finally {
       setBusy(false);
     }
   };
 
-  if (outcome) return <Result outcome={outcome} hasPhone={hasPhone} />;
+  if (needId) {
+    return (
+      <Watching
+        needId={needId}
+        runId={runId}
+        onRunId={setRunId}
+        outcome={outcome}
+        onOutcome={setOutcome}
+        hasPhone={hasPhone}
+      />
+    );
+  }
 
   return (
     <form onSubmit={submit} className="flex max-w-lg flex-col gap-5">
@@ -145,7 +177,7 @@ export default function NeedForm({ hasPhone }: { hasPhone: boolean }) {
         disabled={busy}
         className="self-start border border-neutral-500 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-100 hover:border-neutral-300 hover:bg-neutral-900 disabled:opacity-40"
       >
-        {busy ? "Working…" : "Send my agent"}
+        {busy ? "Sending…" : "Send my agent"}
       </button>
 
       <p className="font-sans text-[12px] leading-relaxed text-neutral-600">
@@ -188,6 +220,90 @@ function Field({
         ) : null}
       </span>
     </label>
+  );
+}
+
+/**
+ * The waiting room, which is not a waiting room.
+ *
+ * The old version blocked on one request and showed a spinner for however
+ * long the agent took. Everything interesting — the search, the quote, the
+ * haggle, the refusal — happened where nobody could see it. Now the request
+ * returns immediately and this watches the run unfold.
+ */
+function Watching({
+  needId,
+  runId,
+  onRunId,
+  outcome,
+  onOutcome,
+  hasPhone,
+}: {
+  needId: string;
+  runId: string | null;
+  onRunId: (id: string) => void;
+  outcome: Outcome | null;
+  onOutcome: (o: Outcome) => void;
+  hasPhone: boolean;
+}) {
+  const settled = useRef(false);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    let alive = true;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/needs/${needId}`);
+        if (res.ok) {
+          const json = (await res.json()) as {
+            state: string;
+            runId: string | null;
+          };
+          if (json.runId) onRunId(json.runId);
+          if (TERMINAL.includes(json.state) && !settled.current) {
+            settled.current = true;
+            onOutcome({ state: json.state, runId: json.runId ?? undefined });
+          }
+        }
+      } catch {
+        // keep polling; a dropped request is not a verdict
+      }
+      if (alive && !settled.current) timer = setTimeout(poll, 1000);
+    };
+
+    void poll();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [needId, onRunId, onOutcome]);
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      {outcome ? (
+        <Result outcome={outcome} hasPhone={hasPhone} />
+      ) : (
+        <div>
+          <p className="font-sans text-lg text-neutral-200">
+            Your agent is working.
+          </p>
+          <p className="mt-1 font-sans text-[13px] text-neutral-500">
+            You can close this — it finishes without you. Or watch.
+          </p>
+        </div>
+      )}
+
+      {runId ? (
+        <LiveRun runId={runId} done={outcome !== null} />
+      ) : (
+        <div className="border border-neutral-900 bg-black p-4">
+          <p className="font-mono text-[11px] text-neutral-600">
+            starting your agent…
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -240,13 +356,21 @@ function Result({
           {outcome.detail}
         </p>
       ) : null}
-      <div className="mt-5 flex gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
+        {outcome.state === "escalated" ? (
+          <a
+            href="/app/escalations"
+            className="border border-amber-500 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-amber-400 hover:bg-neutral-900"
+          >
+            Answer it
+          </a>
+        ) : null}
         {outcome.runId ? (
           <a
             href={`/app/runs/${outcome.runId}`}
             className="border border-neutral-600 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-200 hover:border-neutral-400"
           >
-            Watch it happen
+            Full trace
           </a>
         ) : null}
         <a

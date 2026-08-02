@@ -1,7 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { isCycleDeclined, type ChargeCredentials } from "@quartermaster/prava-client";
 import type { Verdict } from "mandate-arbiter";
 import { insertTraceEvent, runOwner, setRunState, sqlRun, traceEventsSince } from "./db";
-import { buildEscalator } from "./escalation-flow";
+import { buildEscalator, ownerNumber } from "./escalation-flow";
 import type { EnvelopeRow } from "./envelopes";
 import { getUser, merchantForOwner } from "./tenant";
 import { usd } from "./money";
@@ -121,11 +122,36 @@ export async function settleRun(
     environment: mode.toUpperCase(),
   });
 
-  const merchantRef =
-    mode === "sandbox"
-      ? await settleSandbox(runId, quoteId, quote.amountCents, charge.credentials)
-      : (await settleViaStripeCheckout(quote.amountCents, charge.credentials))
-          .paymentIntentId;
+  // Who sold this decides who gets the credential. Agent B is a merchant on
+  // its own host and accepts it. A platform supplier is an account here,
+  // with no host and no acquirer of their own, so the money stops with the
+  // platform — and we say exactly that rather than posting their order to
+  // somebody else's merchant.
+  const supplierOwnerId = quote.counterpartyId.startsWith("sup_")
+    ? quote.counterpartyId.slice(4)
+    : null;
+  const seller = supplierOwnerId ? await getUser(supplierOwnerId) : null;
+
+  let merchantRef: string;
+  if (supplierOwnerId) {
+    merchantRef = await settlePlatformSupplier(
+      runId,
+      supplierOwnerId,
+      seller?.display_name ?? quote.counterpartyId,
+      quote.amountCents
+    );
+  } else if (mode === "sandbox") {
+    merchantRef = await settleSandbox(
+      runId,
+      quoteId,
+      quote.amountCents,
+      charge.credentials
+    );
+  } else {
+    merchantRef = (
+      await settleViaStripeCheckout(quote.amountCents, charge.credentials)
+    ).paymentIntentId;
+  }
 
   const report = await prava().reportMandateCharge(
     envelope.prava_mandate_id,
@@ -144,9 +170,6 @@ export async function settleRun(
   const authorizingPaths = verdict.results
     .filter((r) => r.ok)
     .map((r) => r.path);
-  const supplierOwnerId = quote.counterpartyId.startsWith("sup_")
-    ? quote.counterpartyId.slice(4)
-    : null;
   await sqlRun(
     `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
        clause_paths, amount_cents, currency, mode, prava_session_id, prava_txn_id, merchant_ref, at,
@@ -172,8 +195,9 @@ export async function settleRun(
   );
 
   const meter = await portfolioMeter(ownerId);
+  const paidTo = seller?.display_name ?? quote.counterpartyId;
   const receiptText =
-    `Charged ${usd(quote.amountCents)} to agent_b from Envelope ${envelope.label}.` +
+    `Charged ${usd(quote.amountCents)} to ${paidTo} from Envelope ${envelope.label}.` +
     (opts.autonomous
       ? ` Portfolio: ${usd(meter.portfolio.spent_cents)} of ${usd(meter.portfolio.cap_cents)} this cycle.`
       : "");
@@ -191,7 +215,10 @@ export async function settleRun(
   await setRunState(runId, "settled");
 
   try {
-    await buildEscalator(runId, owner?.phone ?? undefined).sendText(receiptText);
+    await buildEscalator(
+      runId,
+      ownerNumber(ownerId, owner?.phone)
+    ).sendText(receiptText);
     await insertTraceEvent(runId, { type: "receipt_sent", text: receiptText });
   } catch (err) {
     // Settlement already stands; a receipt failure must not unwind it.
@@ -206,6 +233,37 @@ export async function settleRun(
     mode,
     receiptText,
   };
+}
+
+/**
+ * A sale by someone who signed up here rather than by a merchant running
+ * its own host.
+ *
+ * The buyer's card is genuinely charged — same envelope, same network
+ * controls, same reported transaction. What does not exist in this build is
+ * the second leg: paying the seller out. The platform is the merchant of
+ * record and the money stops there, so the trace says so in words instead
+ * of implying a payout happened. Nothing here is presented as a completed
+ * transfer to the seller.
+ */
+async function settlePlatformSupplier(
+  runId: string,
+  supplierOwnerId: string,
+  sellerName: string,
+  amountCents: number
+): Promise<string> {
+  const orderRef = `qm_order_${randomBytes(6).toString("hex")}`;
+  await insertTraceEvent(runId, {
+    type: "order_recorded",
+    orderRef,
+    seller: sellerName,
+    supplierOwnerId,
+    amountCents,
+    fulfilledBy: "platform",
+    payoutToSeller: "NOT IMPLEMENTED",
+    line: `${sellerName} sold this capacity. QuarterMaster Market is the merchant of record and collected ${usd(amountCents)}; paying the seller out is not built in this version.`,
+  });
+  return orderRef;
 }
 
 async function settleSandbox(

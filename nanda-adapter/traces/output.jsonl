@@ -1,0 +1,8 @@
+{"agent":"seller-0","kind":"start","ts":0.0}
+{"agent":"seller-1","kind":"start","ts":0.0}
+{"agent":"buyer-0","kind":"start","ts":0.0}
+{"agent":"buyer-1","kind":"start","ts":0.0}
+{"agent":"seller-0","kind":"stop","ts":0.0}
+{"agent":"seller-1","kind":"stop","ts":0.0}
+{"agent":"buyer-0","kind":"stop","ts":0.0}
+{"agent":"buyer-1","kind":"stop","ts":0.0}

@@ -4,7 +4,7 @@
     "error_message": "amount $70.50 exceeds cap $47.00",
     "failing_clause_path": "root.all_of[3]",
     "mandate_id": "qm_mdt_policy_v2",
-    "payment_ref": "nanda-fail-0d9344149e",
+    "payment_ref": "nanda-fail-010cd4c5f4",
     "prava_transactions_consumed": 0,
     "quoted_cents": 7050,
     "service": "gpu-compute-xl"

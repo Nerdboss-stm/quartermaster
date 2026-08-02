@@ -97,6 +97,46 @@ class PravaPayments:
         self._payments: dict[PaymentRef, Receipt] = payments if payments is not None else {}
         self._quotes_by_service: dict[str, _QuoteRecord] = {}
         self._quotes_by_amount: dict[int, _QuoteRecord] = {}
+        self._capacity_cents = 0
+
+    def balance(self, agent: AgentId) -> int:
+        """Spendable capacity right now, in cents.
+
+        Not part of the ``Payments`` protocol, but the bundled
+        ``marketplace`` scenario calls it before buying, so a drop-in
+        replacement needs it.
+
+        There is no play-money balance to report. This answers the only
+        question worth asking: how much could actually be drawn at this
+        moment? That is the funding still available in envelopes whose
+        cycle is open, capped by the policy mandate's remaining cumulative
+        headroom. It is not a promise: the arbiter still rules on every
+        charge.
+
+        Example::
+
+            spendable = payments.balance(AgentId("agent_a"))
+        """
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                data = client.get(f"{self._console_url}/api/portfolio").json()
+        except (httpx.HTTPError, ValueError):
+            return self._capacity_cents
+
+        envelopes = data.get("envelopes", [])
+        open_capacity = sum(
+            int(env.get("per_charge_cap_cents", 0))
+            for env in envelopes
+            if env.get("cycle") == "OPEN"
+        )
+        policy = data.get("policy") or {}
+        cap_cents = policy.get("cap_cents")
+        if cap_cents is None:
+            headroom = open_capacity
+        else:
+            headroom = int(cap_cents) - int(policy.get("cumulative_cents", 0))
+        self._capacity_cents = max(0, min(open_capacity, headroom))
+        return self._capacity_cents
 
     # ------------------------------------------------------------------
     # Payments protocol

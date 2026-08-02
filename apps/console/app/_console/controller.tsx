@@ -25,14 +25,17 @@ export default function Controller({
   onToggleMute,
   onReset,
   replayId,
+  armed = true,
 }: {
   steps: Step[];
   muted: boolean;
   onToggleMute: () => void;
   onReset: () => void;
   replayId: string | null;
+  /** Whether this browser holds the operator token. */
+  armed?: boolean;
 }) {
-  const [armed, setArmed] = useState(0);
+  const [armedIndex, setArmed] = useState(0);
   const [states, setStates] = useState<Record<string, StepState>>({});
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -65,7 +68,7 @@ export default function Controller({
       if (e.target instanceof HTMLInputElement) return;
       if (e.code === "Space") {
         e.preventDefault();
-        void runStep(armed);
+        void runStep(armedIndex);
       } else if (e.key === "ArrowRight") {
         setArmed((a) => Math.min(a + 1, steps.length - 1));
       } else if (e.key === "ArrowLeft") {
@@ -84,7 +87,7 @@ export default function Controller({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [armed, onReset, onToggleMute, replayId, runStep, steps.length]);
+  }, [armedIndex, onReset, onToggleMute, replayId, runStep, steps.length]);
 
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-neutral-800 pt-1 font-mono text-[9px]">
@@ -100,7 +103,7 @@ export default function Controller({
               <span
                 key={s.id}
                 className={`border px-1 py-0.5 tracking-wider ${
-                  i === armed
+                  i === armedIndex
                     ? "border-neutral-300 text-neutral-200"
                     : st === "done"
                       ? "border-neutral-800 text-emerald-400"
@@ -118,8 +121,13 @@ export default function Controller({
             );
           })}
           <span className="ml-1 text-neutral-600">
-            {steps[armed]?.label} · SPACE run · ←→ arm · R reset · M mute
+            {steps[armedIndex]?.label} · SPACE run · ←→ arm · R reset · M mute
           </span>
+          {armed ? null : (
+            <span className="border border-amber-400 px-1 uppercase tracking-widest text-amber-400">
+              read only · no operator token
+            </span>
+          )}
         </>
       )}
       {error ? <span className="text-red-500">{error}</span> : null}

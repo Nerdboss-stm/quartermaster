@@ -31,11 +31,31 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/** The operator carries the demo token in the URL (?token=...). Forward it,
- *  or every money-moving control is refused on a hosted deployment. */
+const TOKEN_KEY = "qm.demo.token";
+
+/**
+ * The operator carries the demo token in the URL (?token=...). Remember it
+ * for the tab, because the passkey round-trip and any reload would
+ * otherwise drop it and every control would start failing mid-take.
+ * Session-scoped, so closing the tab forgets it and a shared link stays
+ * read-only.
+ */
 function demoToken(): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("token");
+  const fromUrl = new URLSearchParams(window.location.search).get("token");
+  if (fromUrl) {
+    try {
+      window.sessionStorage.setItem(TOKEN_KEY, fromUrl);
+    } catch {
+      // private mode: fall back to the URL for this page view
+    }
+    return fromUrl;
+  }
+  try {
+    return window.sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 async function demo(action: string, extra: Record<string, unknown> = {}) {
@@ -323,6 +343,7 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
           steps={steps}
           muted={muted}
           onToggleMute={toggleMute}
+          armed={typeof window !== "undefined" && !!demoToken()}
           onReset={resetView}
           replayId={replayId}
         />

@@ -1,26 +1,11 @@
 import { Agent, run, tool } from "@openai/agents";
-import { evaluate, type Verdict } from "mandate-arbiter";
+import type { Verdict } from "mandate-arbiter";
 import { z } from "zod";
-import {
-  createRun,
-  insertTraceEvent,
-  setRunState,
-  traceEventsSince,
-} from "./db";
-import { ledgerReader, loadActiveMandate } from "./mandates";
+import { createRun, insertTraceEvent, setRunState } from "./db";
+import { raiseEscalation } from "./escalation-flow";
+import { evaluateQuote } from "./evaluate-quote";
+import { findQuote, type Quote } from "./quotes";
 import { queryOffers, type Need } from "./registry";
-
-interface Quote {
-  id: string;
-  counterpartyId: string;
-  amountCents: number;
-  currency: string;
-  attributes: Record<string, string | number | boolean>;
-  createdAt: string;
-  pricingRule?: string;
-  held?: boolean;
-  note?: string;
-}
 
 // The run's Need is canonical and lives here, not in model output. Tools
 // take ids only, and every amount is read back from stored quotes: the
@@ -34,24 +19,6 @@ interface RunCtx {
 
 function trace(ctx: RunCtx, body: Record<string, unknown>): void {
   insertTraceEvent(ctx.runId, body);
-}
-
-/** Latest stored version of a quote (a requote overwrites by same id). */
-function findQuote(ctx: RunCtx, quoteId: string): Quote | null {
-  const rows = traceEventsSince(ctx.runId, 0);
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const body = JSON.parse(rows[i].body) as {
-      type?: string;
-      quote?: Quote;
-    };
-    if (
-      (body.type === "quote_received" || body.type === "requote_response") &&
-      body.quote?.id === quoteId
-    ) {
-      return body.quote;
-    }
-  }
-  return null;
 }
 
 function buildTools(ctx: RunCtx) {
@@ -133,7 +100,7 @@ function buildTools(ctx: RunCtx) {
         return JSON.stringify({ error: "negotiation already used this run" });
       }
       const match = queryOffers(ctx.need).find((m) => m.offer.id === offerId);
-      const quote = findQuote(ctx, quoteId);
+      const quote = findQuote(ctx.runId, quoteId);
       if (!match || !quote) return JSON.stringify({ error: "unknown offer or quote" });
 
       ctx.negotiated = true;
@@ -171,34 +138,14 @@ function buildTools(ctx: RunCtx) {
       "Deterministically evaluate a quote against the active policy mandate. The arbiter alone decides; its verdict is final.",
     parameters: z.object({ quoteId: z.string() }),
     async execute({ quoteId }) {
-      const quote = findQuote(ctx, quoteId);
-      if (!quote) {
-        trace(ctx, { type: "evaluate_error", reason: `unknown quote ${quoteId}` });
-        return JSON.stringify({ error: "unknown quote; cannot evaluate" });
+      let verdict: Verdict;
+      try {
+        verdict = await evaluateQuote(ctx.runId, quoteId);
+      } catch (err) {
+        trace(ctx, { type: "evaluate_error", reason: String(err) });
+        return JSON.stringify({ error: "cannot evaluate; failing closed" });
       }
-      const mandate = loadActiveMandate();
-      const proposal = {
-        id: quote.id,
-        counterpartyId: quote.counterpartyId,
-        amountCents: quote.amountCents,
-        currency: quote.currency,
-        attributes: quote.attributes,
-        createdAt: quote.createdAt,
-      };
-      const verdict = await evaluate(mandate, proposal, {
-        ledger: ledgerReader(),
-        onEvent: (e) => insertTraceEvent(ctx.runId, e),
-      });
       ctx.verdict = verdict;
-      trace(ctx, { type: "verdict_full", verdict });
-      setRunState(
-        ctx.runId,
-        verdict.decision === "EXECUTE"
-          ? "execute_ready"
-          : verdict.decision === "NEEDS_HUMAN"
-            ? "needs_human"
-            : "refused"
-      );
       return JSON.stringify({
         decision: verdict.decision,
         determinedBy: verdict.determinedBy.map((d) => ({
@@ -222,13 +169,12 @@ function buildTools(ctx: RunCtx) {
           error: "escalation is only valid after a NEEDS_HUMAN verdict",
         });
       }
-      trace(ctx, {
-        type: "escalation_requested",
-        mandateId: v.mandateId,
-        proposalId: v.proposalId,
-        determinedBy: v.determinedBy.map((d) => ({ path: d.path, detail: d.detail })),
-        options: ["APPROVE", "DECLINE", "RAISE CAP TO $X"],
-      });
+      try {
+        await raiseEscalation(ctx.runId, v, v.proposalId);
+      } catch (err) {
+        trace(ctx, { type: "escalation_send_failed", error: String(err) });
+        return JSON.stringify({ error: "escalation delivery failed" });
+      }
       return JSON.stringify({ recorded: true });
     },
   });

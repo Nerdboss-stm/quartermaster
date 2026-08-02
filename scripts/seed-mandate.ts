@@ -5,6 +5,7 @@ import type { Mandate } from "../packages/mandate-arbiter/src/types";
 const root = path.resolve(__dirname, "..");
 
 export const POLICY_MANDATE_ID = "qm_mdt_policy_v1";
+export const POLICY_AMOUNT_CAP_CENTS = 4000;
 
 // LAYERS: cumulative_cap and envelope routing are enforced by OUR ledger;
 // the per-envelope one-charge-per-cycle rule is enforced by Visa at the
@@ -20,7 +21,7 @@ const mandate: Mandate = {
       { kind: "counterparty_allowlist", ids: ["agent_b"] },
       { kind: "attribute", key: "vram_gb", op: "gte", value: 40 },
       { kind: "attribute", key: "duration_h", op: "lte", value: 6 },
-      { kind: "amount_cap", maxCents: 4000, onFail: "escalate" },
+      { kind: "amount_cap", maxCents: POLICY_AMOUNT_CAP_CENTS, onFail: "escalate" },
       { kind: "cumulative_cap", maxCents: 12000, onFail: "escalate" },
     ],
   },

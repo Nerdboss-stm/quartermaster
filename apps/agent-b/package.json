@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.12.0",
-    "hono": "^4.5.0"
+    "hono": "^4.5.0",
+    "stripe": "^22.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

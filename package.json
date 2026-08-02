@@ -7,7 +7,9 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:mandate": "tsx scripts/seed-mandate.ts",
     "start:run": "tsx scripts/start-run.ts",
-    "demo:core": "tsx scripts/demo-core.ts"
+    "demo:core": "tsx scripts/demo-core.ts",
+    "demo:full": "tsx scripts/demo-full.ts",
+    "second:need": "tsx scripts/second-need.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0"

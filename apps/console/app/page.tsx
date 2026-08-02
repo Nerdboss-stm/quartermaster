@@ -2,6 +2,7 @@
 import "@quartermaster/escalation";
 import "@quartermaster/prava-client";
 import "mandate-arbiter";
+import ApprovalStrip from "./approval-strip";
 import EventStream from "./event-stream";
 import "mandate-arbiter";
 
@@ -16,8 +17,9 @@ function RegionLabel({ children }: { children: string }) {
 export default function Home() {
   return (
     <main className="grid h-dvh grid-cols-[1fr_1.15fr_1fr] grid-rows-[minmax(0,1fr)_176px] overflow-hidden">
-      <section className="min-h-0 border-r border-neutral-800 px-4 py-3">
+      <section className="flex min-h-0 flex-col border-r border-neutral-800 px-4 py-3">
         <RegionLabel>AGENT A</RegionLabel>
+        <ApprovalStrip />
       </section>
       <section className="flex min-h-0 flex-col border-r border-neutral-800 px-4 py-3">
         <RegionLabel>MANDATE</RegionLabel>

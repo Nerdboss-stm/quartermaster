@@ -9,3 +9,7 @@ db/
 *.tsbuildinfo
 npm-debug.log*
 .vercel
+nanda-adapter/.venv/
+nanda-adapter/**/__pycache__/
+nanda-adapter/.pytest_cache/
+nanda-adapter/*.egg-info/

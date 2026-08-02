@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# Prava marketplace: buyers pay sellers with REAL Prava sandbox money,
+# bounded by a human-granted envelope portfolio.
+#
+# BEFORE RUNNING:
+#   1. Start a Quartermaster console (it holds the arbiter, router, ledger)
+#      and export QUARTERMASTER_CONSOLE_URL if it is not on localhost:3000.
+#   2. The owner approves at least one ENVELOPE with a passkey. This is a
+#      human action and is never automated. One charge per envelope per
+#      weekly cycle is enforced by the Visa network, so approve as many
+#      envelopes as the run needs concurrent charges.
+#
+# Every charge is evaluated by the deterministic mandate arbiter first.
+# Refusals surface as PravaPaymentError with the failing clause path;
+# they are the expected outcome when a quote exceeds policy, and they
+# consume no sandbox transactions.
+name: prava_marketplace
+description: "Buyers and sellers settling real Prava sandbox charges under a policy mandate."
+
+tier: 1
+seed: 42
+
+agents:
+  count: 4
+  brain: state-machine
+  roles:
+    - name: buyer
+      count: 2
+    - name: seller
+      count: 2
+
+layers:
+  transport: in_memory
+  comms: nest_native
+  identity: did_key
+  registry: in_memory
+  auth: jwt
+  trust: score_average
+  payments: prava
+  coordination: contract_net
+  negotiation: alternating_offers
+  memory: blackboard
+  privacy: noop
+  datafacts: datafacts_v1

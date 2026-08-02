@@ -59,7 +59,7 @@ async function ensureEnvelope(
   const { approvalUrl } = await createEnvelopeSession(label);
   humanTouch(
     touchNo,
-    `Passkey-approve Envelope ${label} (card 7797, enrolled Chrome). Waiting...\n    ${approvalUrl}`
+    `Passkey-approve Envelope ${label} (team card ...2226, enrolled Chrome). Waiting...\n    ${approvalUrl}`
   );
   const mandate = await awaitNewMandate(known);
   const row = storeEnvelope(label, mandate);

@@ -10193,6 +10193,13 @@ organized by card network. Sandbox only.
 > ## Documentation Index
 > Fetch the complete documentation index at: https://docs.prava.space/llms.txt
 > Use this file to discover all available pages before exploring further.
+## TEAM CARD (Aug 2, from Prava email — full number stays in email)
+Team-specific card ends 2226 (exp 12/27). Max 30 transactions/day.
+This is THE demo card now; never card 7789 or 7797 (exhausted/shared).
+Enroll during the first envelope session: enter card on the hosted
+page, issuer OTP 456789, register passkey. Returning flow thereafter
+is passkey-only. Enroll BEFORE recording.
+
 ## CARD EXHAUSTION (Aug 2, confirmed by Prava support)
 FETCH_AGENTIC_CREDS_ERROR ("Fetching cryptogram failed") on a charge
 means the TEST CARD is exhausted (per-card credential quota), NOT a

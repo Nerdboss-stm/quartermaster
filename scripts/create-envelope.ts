@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const known = await knownMandateIds();
   const { approvalUrl } = await createEnvelopeSession(label);
   console.log(
-    `\n*** PASSKEY REQUIRED *** approve Envelope ${label} (card 7797, enrolled Chrome). Waiting...\n    ${approvalUrl}\n`
+    `\n*** PASSKEY REQUIRED *** approve Envelope ${label} (team card ...2226, enrolled Chrome). Waiting...\n    ${approvalUrl}\n`
   );
   const mandate = await awaitNewMandate(known);
   const row = storeEnvelope(label, mandate);

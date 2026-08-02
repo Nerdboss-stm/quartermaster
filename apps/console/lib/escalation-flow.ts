@@ -111,10 +111,11 @@ export async function latestPendingEscalation(
 /** Store a raw reply. Strict regex parse only. Unparsed rows keep the
  *  escalation pending and earn the correction message. */
 export async function recordReply(
-  runId: string,
+  escalation: PendingEscalation,
   raw: string,
   source: "linq" | "console"
-): Promise<{ parsed: ParsedReply | null; correction?: string }> {
+): Promise<{ parsed: ParsedReply | null; claimed: boolean; correction?: string }> {
+  const runId = escalation.run_id;
   const parsed = parseReply(raw);
   await sqlRun(
     `INSERT INTO escalation_replies (run_id, raw, action, new_cap_cents, source, at)
@@ -134,12 +135,21 @@ export async function recordReply(
     parsed: parsed ?? null,
     source,
   });
-  if (!parsed) return { parsed: null, correction: CORRECTION_MESSAGE };
-  await sqlRun(
-    "UPDATE escalations SET status = 'answered' WHERE run_id = ? AND status = 'pending'",
-    [runId]
+
+  // Anything we cannot parse leaves the escalation open and earns a
+  // correction listing the three exact forms. No LLM interprets this.
+  if (!parsed) {
+    return { parsed: null, claimed: false, correction: CORRECTION_MESSAGE };
+  }
+
+  // Claim the escalation atomically. Only the caller that flips it from
+  // pending may act on the answer, so a redelivered iMessage — or the same
+  // person answering by text and in the inbox — settles exactly once.
+  const result = await sqlRun(
+    "UPDATE escalations SET status = 'answered' WHERE id = ? AND status = 'pending'",
+    [escalation.id]
   );
-  return { parsed };
+  return { parsed, claimed: result.changes === 1 };
 }
 
 /** Poll for a parsed reply. Timeout fails closed. */

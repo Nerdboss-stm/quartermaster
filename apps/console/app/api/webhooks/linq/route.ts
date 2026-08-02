@@ -1,10 +1,13 @@
 import { LinqEscalator, verifyLinqSignature } from "@quartermaster/escalation";
 import { sqlRun } from "@/lib/db";
 import { latestPendingEscalation, recordReply } from "@/lib/escalation-flow";
+import { continueAfterReply } from "@/lib/continuation";
 import { DEMO_OWNER, getUserByPhone } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Settlement runs inside this request: Prava charge, merchant order, report.
+export const maxDuration = 300;
 
 // Field names verified against a live capture (webhook_version 2026-02-03):
 // event name at event_type, reply text at data.parts[].value.
@@ -109,7 +112,7 @@ export async function POST(req: Request) {
       .join(" ")
       .trim() || String(data.body ?? "");
   if (!raw) return Response.json({ ok: true, ignored: "no text parts" });
-  const { parsed, correction } = await recordReply(pending.run_id, raw, "linq");
+  const { parsed, claimed, correction } = await recordReply(pending, raw, "linq");
 
   if (correction && process.env.LINQ_API_KEY && process.env.LINQ_FROM_NUMBER && ownerHandle) {
     try {
@@ -122,5 +125,19 @@ export async function POST(req: Request) {
       console.warn(`correction send failed: ${String(err)}`);
     }
   }
+  // The reply is the trigger: amend, re-evaluate and settle happen here,
+  // server-side, while the owner goes back to sleep. Errors are swallowed
+  // into a 200 so Linq never retries a money path.
+  if (parsed && claimed) {
+    try {
+      const outcome = await continueAfterReply(pending, parsed);
+      console.log(`continuation for ${pending.run_id}: ${outcome.status} — ${outcome.detail}`);
+      return Response.json({ ok: true, parsed: parsed.action, continuation: outcome.status });
+    } catch (err) {
+      console.error(`continuation threw for ${pending.run_id}: ${String(err)}`);
+      return Response.json({ ok: true, parsed: parsed.action, continuation: "failed" });
+    }
+  }
+
   return Response.json({ ok: true, parsed: parsed?.action ?? null });
 }

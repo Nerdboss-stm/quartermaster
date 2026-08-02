@@ -1,8 +1,10 @@
 import { ownerOrDemo } from "@/lib/auth";
+import { continueAfterReply } from "@/lib/continuation";
 import { latestPendingEscalation, recordReply } from "@/lib/escalation-flow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /** Console-channel reply surface (fallback + guest runs). Same strict
  *  parser as the iMessage path. */
@@ -20,6 +22,20 @@ export async function POST(req: Request) {
   if (!pending) {
     return Response.json({ error: "no pending escalation" }, { status: 409 });
   }
-  const { parsed, correction } = await recordReply(pending.run_id, body.raw, "console");
+  const { parsed, claimed, correction } = await recordReply(
+    pending,
+    body.raw,
+    "console"
+  );
+
+  if (parsed && claimed) {
+    const outcome = await continueAfterReply(pending, parsed);
+    return Response.json({
+      ok: true,
+      parsed,
+      correction: null,
+      continuation: outcome,
+    });
+  }
   return Response.json({ ok: true, parsed, correction: correction ?? null });
 }

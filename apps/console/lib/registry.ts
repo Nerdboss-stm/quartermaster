@@ -65,6 +65,31 @@ export async function ensureOffersSeeded(): Promise<void> {
   }
 }
 
+/**
+ * A platform supplier's endpoints live on this app, so their absolute URLs
+ * are rebuilt against whatever instance is serving right now. Without this
+ * a listing created against the deployed URL would be unreachable when the
+ * same database is opened locally, and vice versa. External merchants like
+ * Agent B are left exactly as published.
+ */
+function rebaseInternalOffer(offer: Offer): Offer {
+  if (!offer.agentId.startsWith("sup_")) return offer;
+  const base = (process.env.CONSOLE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const rebase = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return `${base}${parsed.pathname}${parsed.search}`;
+    } catch {
+      return url;
+    }
+  };
+  return {
+    ...offer,
+    quoteUrl: rebase(offer.quoteUrl),
+    requoteUrl: rebase(offer.requoteUrl),
+  };
+}
+
 /** Deterministic capability filter. No LLM. Malformed offers never match. */
 export async function queryOffers(need: Need): Promise<OfferMatch[]> {
   if (Date.parse(need.deadline) <= Date.now()) return [];
@@ -79,7 +104,7 @@ export async function queryOffers(need: Need): Promise<OfferMatch[]> {
       continue;
     }
     if (!parsed.success) continue;
-    const offer = parsed.data;
+    const offer = rebaseInternalOffer(parsed.data);
 
     if (!offer.availableNow) continue;
     if (offer.maxDurationH < need.durationH) continue;

@@ -4,7 +4,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @quartermaster/console dev",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "seed:mandate": "tsx scripts/seed-mandate.ts",
+    "start:run": "tsx scripts/start-run.ts",
+    "demo:core": "tsx scripts/demo-core.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0"

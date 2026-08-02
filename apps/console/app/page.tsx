@@ -2,6 +2,8 @@
 import "@quartermaster/escalation";
 import "@quartermaster/prava-client";
 import "mandate-arbiter";
+import EventStream from "./event-stream";
+import "mandate-arbiter";
 
 function RegionLabel({ children }: { children: string }) {
   return (
@@ -17,8 +19,9 @@ export default function Home() {
       <section className="min-h-0 border-r border-neutral-800 px-4 py-3">
         <RegionLabel>AGENT A</RegionLabel>
       </section>
-      <section className="min-h-0 border-r border-neutral-800 px-4 py-3">
+      <section className="flex min-h-0 flex-col border-r border-neutral-800 px-4 py-3">
         <RegionLabel>MANDATE</RegionLabel>
+        <EventStream />
       </section>
       <section className="min-h-0 px-4 py-3">
         <RegionLabel>AGENT B</RegionLabel>

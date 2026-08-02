@@ -15,8 +15,10 @@ import {
   Stamp,
   toneForState,
 } from "../_ui/primitives";
+import GettingStarted from "../_ui/getting-started";
 import MorningBrief from "../_ui/morning-brief";
 import PageHeader from "../_ui/page-header";
+import { agentNumber, sandboxCardFor } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,7 @@ export default async function Dashboard() {
     ["pending", "running", "escalated"].includes(n.state)
   );
   const hasEnvelope = meter.envelopes.length > 0;
+  const card = sandboxCardFor(user.id);
   const earned = sales.reduce((sum, s) => sum + s.amount_cents, 0);
 
   return (
@@ -51,6 +54,42 @@ export default async function Dashboard() {
             : "One approval and your agent can start buying — inside limits you set, and no further."
         }
         action={{ href: "/app/needs/new", label: "New request" }}
+      />
+
+      <GettingStarted
+        steps={[
+          {
+            title: "Turn on text alerts",
+            body: user.phone
+              ? `Text anything to the number below from ${user.phone}. Our messaging line can only reach people who have messaged it first, so this one message is what switches it on. Skip it and refusals wait in Approvals instead — everything still works.`
+              : "Add your mobile number, then text the agent's line once so it is allowed to reach you.",
+            done: user.sms_ready === 1,
+            detail: agentNumber()
+              ? [{ label: "Text this number", value: agentNumber()! }]
+              : undefined,
+            cta: user.phone
+              ? undefined
+              : { href: "/app/settings", label: "Add your number" },
+          },
+          {
+            title: "Approve spending power",
+            body: "A passkey grants one bounded envelope. Enter the sandbox test card below when asked — it is a real card number at the network, and it is declined everywhere except this sandbox.",
+            done: hasEnvelope,
+            detail: [
+              { label: "Test card", value: card.number },
+              { label: "CVV", value: card.cvv },
+              { label: "Expiry", value: card.expiry },
+              { label: "If asked for a code", value: card.otp },
+            ],
+            cta: { href: "/app/portfolio", label: "Approve an envelope" },
+          },
+          {
+            title: "Send your agent to buy something",
+            body: "Ask for more than your policy allows and watch it refuse; ask for less and watch it buy. Either way you see every step as it happens.",
+            done: runs.length > 0,
+            cta: { href: "/app/needs/new", label: "New request" },
+          },
+        ]}
       />
 
       <MorningBrief brief={brief} />

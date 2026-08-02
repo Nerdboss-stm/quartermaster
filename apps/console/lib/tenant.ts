@@ -17,7 +17,42 @@ export interface UserRow {
   display_name: string;
   phone: string | null;
   prava_customer_id: string;
+  /** 1 once they have messaged our line, which is what lets us text them. */
+  sms_ready: number;
   created_at: string;
+}
+
+/** The number an owner texts to switch on alerts, and that alerts come from. */
+export function agentNumber(): string | null {
+  return process.env.LINQ_FROM_NUMBER ?? null;
+}
+
+/**
+ * A sandbox test card to enroll during approval, spread across accounts so
+ * two people trying this at once do not share one card's daily limit.
+ * Published Prava sandbox numbers — they are declined everywhere else.
+ * 7789 and 7797 are held back: the demo browser is enrolled on 7797.
+ */
+const SANDBOX_CARDS = [
+  { number: "4622 9431 2313 7805", cvv: "304" },
+  { number: "4622 9431 2313 7847", cvv: "698" },
+  { number: "4622 9431 2313 7854", cvv: "799" },
+  { number: "4622 9431 2313 7862", cvv: "938" },
+  { number: "4622 9431 2313 7870", cvv: "966" },
+  { number: "4622 9431 2313 7888", cvv: "408" },
+  { number: "4622 9431 2313 7896", cvv: "499" },
+  { number: "4622 9431 2313 7904", cvv: "890" },
+  { number: "4622 9431 2313 7912", cvv: "999" },
+];
+
+export function sandboxCardFor(ownerId: string) {
+  let hash = 0;
+  for (const ch of ownerId) hash = (hash * 31 + ch.charCodeAt(0)) % 100_000;
+  return {
+    ...SANDBOX_CARDS[hash % SANDBOX_CARDS.length],
+    expiry: "12/27",
+    otp: "456789",
+  };
 }
 
 export async function getUser(id: string): Promise<UserRow | null> {

@@ -55,14 +55,6 @@ export async function POST(req: Request) {
     console.warn(
       `linq webhook 401: signature mismatch (tried: ${candidates.map(([n]) => n).join(", ")}; timestamp skew ${tsDelta}s; sig prefix ${headers.signature.slice(0, 8)})`
     );
-    // TEMP DIAGNOSTIC: capture one failing request for offline scheme tests.
-    if (process.env.QM_WEBHOOK_DEBUG_FILE) {
-      const { writeFileSync } = await import("node:fs");
-      writeFileSync(
-        process.env.QM_WEBHOOK_DEBUG_FILE,
-        JSON.stringify({ headers, rawBody })
-      );
-    }
     return Response.json({ error: "invalid signature" }, { status: 401 });
   }
   console.log(`linq webhook verified with ${matched[0]} secret`);
@@ -88,22 +80,48 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, ignored: name ?? "unknown" });
   }
 
-  // Accept only the demo chat (or, failing that, the owner's handle).
+  // Anyone with an account here may reply from their own number. The demo
+  // chat stays accepted so the recorded scripts keep working, but it is no
+  // longer the only sender allowed — that made the whole product a
+  // single-person demo the moment a second person signed up.
+  const replyFrom = data.sender_handle?.handle ?? "";
+  const sender = replyFrom ? await getUserByPhone(replyFrom) : null;
   const chatId = process.env.LINQ_DEMO_CHAT_ID;
   const ownerHandle = process.env.LINQ_TO_NUMBER;
   const chatMatches = chatId ? String(data.chat?.id) === chatId : false;
-  const senderMatches = ownerHandle
-    ? data.sender_handle?.handle === ownerHandle
-    : false;
-  if (!chatMatches && !senderMatches) {
-    return Response.json({ ok: true, ignored: "not the demo chat" });
+  const senderMatches = ownerHandle ? replyFrom === ownerHandle : false;
+  if (!sender && !chatMatches && !senderMatches) {
+    return Response.json({ ok: true, ignored: "sender has no account here" });
   }
 
-  const replyFrom = data.sender_handle?.handle ?? "";
-  const sender = replyFrom ? await getUserByPhone(replyFrom) : null;
   const ownerId = sender?.id ?? DEMO_OWNER;
+  // They have now messaged this line, so Linq will let us message them.
+  const firstContact = sender !== null && sender.sms_ready !== 1;
+  if (sender && firstContact) {
+    await sqlRun("UPDATE users SET sms_ready = 1 WHERE id = ?", [sender.id]);
+  }
+
+  const replyTo = sender?.phone ?? ownerHandle;
+
   const pending = await latestPendingEscalation(ownerId);
-  if (!pending) return Response.json({ ok: true, ignored: "no pending escalation" });
+  if (!pending) {
+    // Nothing to decide. If this is the message that switched texting on,
+    // say so — otherwise they are left wondering whether it worked.
+    if (firstContact && replyTo && process.env.LINQ_API_KEY && process.env.LINQ_FROM_NUMBER) {
+      try {
+        await new LinqEscalator({
+          apiKey: process.env.LINQ_API_KEY,
+          fromNumber: process.env.LINQ_FROM_NUMBER,
+          toNumber: replyTo,
+        }).sendText(
+          `QUARTERMASTER: text alerts are on for ${sender!.display_name}. When your agent wants to spend past your policy, it will ask you here and wait.`
+        );
+      } catch (err) {
+        console.warn(`activation confirmation failed: ${String(err)}`);
+      }
+    }
+    return Response.json({ ok: true, activated: firstContact });
+  }
 
   const raw =
     (data.parts ?? [])
@@ -114,12 +132,14 @@ export async function POST(req: Request) {
   if (!raw) return Response.json({ ok: true, ignored: "no text parts" });
   const { parsed, claimed, correction } = await recordReply(pending, raw, "linq");
 
-  if (correction && process.env.LINQ_API_KEY && process.env.LINQ_FROM_NUMBER && ownerHandle) {
+  if (correction && process.env.LINQ_API_KEY && process.env.LINQ_FROM_NUMBER && replyTo) {
     try {
       await new LinqEscalator({
         apiKey: process.env.LINQ_API_KEY,
         fromNumber: process.env.LINQ_FROM_NUMBER,
-        toNumber: ownerHandle,
+        // Back to whoever wrote it, not to whoever the deployment is
+        // configured for.
+        toNumber: replyTo,
       }).sendText(correction);
     } catch (err) {
       console.warn(`correction send failed: ${String(err)}`);

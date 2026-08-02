@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { reconcileEnvelopes } from "@/lib/envelopes";
 import { portfolioMeter } from "@/lib/portfolio";
+import { sandboxCardFor } from "@/lib/tenant";
 import EnvelopeWizard from "../../_ui/envelope-wizard";
 import PageHeader from "../../_ui/page-header";
 import { Amount, Badge, Card, Meter, Mono } from "../../_ui/primitives";
@@ -28,6 +29,7 @@ export default async function PortfolioPage({
   }
 
   const meter = await portfolioMeter(user.id);
+  const card = sandboxCardFor(user.id);
 
   return (
     <>
@@ -62,6 +64,24 @@ export default async function PortfolioPage({
       <div className="grid gap-4 p-6 lg:grid-cols-2">
         <Card title="Approve a new envelope">
           <EnvelopeWizard />
+
+          <div className="mt-6 border-t border-neutral-900 pt-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">
+              Use this sandbox card when asked
+            </p>
+            <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+              <Field label="Card number" value={card.number} />
+              <Field label="CVV" value={card.cvv} />
+              <Field label="Expiry" value={card.expiry} />
+              <Field label="One-time code" value={card.otp} />
+            </dl>
+            <p className="mt-3 max-w-md font-sans text-[11px] leading-relaxed text-neutral-600">
+              A real card number on the Visa network, issued for sandbox
+              testing and declined everywhere else. On a new browser you are
+              asked for the code first, then to create a passkey; after that
+              it is the passkey alone.
+            </p>
+          </div>
         </Card>
 
         <Card
@@ -130,5 +150,18 @@ export default async function PortfolioPage({
         </div>
       </div>
     </>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="font-mono text-[9px] uppercase tracking-[0.2em] text-neutral-600">
+        {label}
+      </dt>
+      <dd>
+        <Mono className="text-[13px] text-neutral-200">{value}</Mono>
+      </dd>
+    </div>
   );
 }

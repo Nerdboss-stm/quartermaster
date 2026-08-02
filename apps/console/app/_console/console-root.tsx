@@ -344,6 +344,7 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
 
   return (
     <main
+      data-fixed-viewport
       className="grid h-dvh grid-cols-[1fr_1.2fr_1fr] grid-rows-[minmax(0,1fr)_190px] overflow-hidden transition-colors duration-700"
       style={{ backgroundColor: ground }}
     >

@@ -4,6 +4,21 @@
 
 html,
 body {
-  height: 100%;
+  min-height: 100%;
+}
+
+/* The operator console is a single fixed screen; product pages scroll. */
+body:has(main[data-fixed-viewport]) {
   overflow: hidden;
+}
+
+::selection {
+  background: #3f3f46;
+  color: #fafafa;
+}
+
+/* Terminal ground, but readable prose where a human is reading. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
 }

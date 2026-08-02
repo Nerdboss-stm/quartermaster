@@ -99,26 +99,56 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
       };
     }
 
+    // Two ways to follow a live run. SSE gives the tightest latency and
+    // suits a long-lived local process. On serverless an open stream keeps
+    // a function billing for every viewer, so there we poll a cursor
+    // instead: same reducer, same screen, far cheaper.
+    const useStream =
+      process.env.NEXT_PUBLIC_QM_STREAM === "sse" ||
+      (!process.env.NEXT_PUBLIC_QM_STREAM && window.location.hostname === "localhost");
+
     let source: EventSource | null = null;
     let active = true;
     let current: string | null = null;
+    let cursor = 0;
+
+    const drain = async (id: string) => {
+      const res = await fetch(`/api/runs/${id}/trace?after=${cursor}`, {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as { events?: TraceEnvelope[] };
+      for (const evt of data.events ?? []) {
+        cursor = Math.max(cursor, evt.id);
+        feed(evt);
+      }
+    };
+
     const follow = async () => {
       try {
         const res = await fetch("/api/runs/latest", { cache: "no-store" });
         const data = (await res.json()) as { id: string | null };
-        if (!active || !data.id || data.id === current) return;
-        current = data.id;
-        setRunId(data.id);
-        resetView();
-        source?.close();
-        source = new EventSource(`/api/runs/${data.id}/events`);
-        source.onmessage = (msg) => feed(JSON.parse(msg.data) as TraceEnvelope);
+        if (!active || !data.id) return;
+
+        if (data.id !== current) {
+          current = data.id;
+          cursor = 0;
+          setRunId(data.id);
+          resetView();
+          source?.close();
+          source = null;
+          if (useStream) {
+            source = new EventSource(`/api/runs/${data.id}/events`);
+            source.onmessage = (msg) =>
+              feed(JSON.parse(msg.data) as TraceEnvelope);
+          }
+        }
+        if (!useStream) await drain(data.id);
       } catch {
-        // not migrated yet
+        // not migrated yet, or a transient fetch failure: try again next tick
       }
     };
     void follow();
-    const interval = setInterval(follow, 2000);
+    const interval = setInterval(follow, useStream ? 2000 : 700);
     return () => {
       active = false;
       clearInterval(interval);

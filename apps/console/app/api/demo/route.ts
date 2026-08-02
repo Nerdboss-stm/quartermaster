@@ -1,4 +1,5 @@
 import { latestRunId, sqlAll } from "@/lib/db";
+import { authorizeDemoControl } from "@/lib/demo-guard";
 import {
   amendAndReEvaluate,
   recordedReply,
@@ -40,6 +41,19 @@ export async function POST(req: Request) {
     return Response.json({ error: "invalid json" }, { status: 400 });
   }
   const action = body.action;
+
+  // Read-only status checks stay open so a spectator can follow along.
+  // Everything else moves real money and needs the token.
+  if (action !== "replyStatus") {
+    const guard = authorizeDemoControl(req);
+    if (!guard.ok) {
+      console.warn(`demo control refused (${action}): ${guard.message}`);
+      return Response.json(
+        { error: { code: "DEMO_CONTROL_FORBIDDEN", message: guard.message } },
+        { status: guard.status }
+      );
+    }
+  }
 
   try {
     switch (action) {

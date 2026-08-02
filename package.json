@@ -12,11 +12,13 @@
     "second:need": "tsx scripts/second-need.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0"
+    "better-sqlite3": "^12.2.0",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.5.0",
+    "@types/pg": "^8.20.3",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }

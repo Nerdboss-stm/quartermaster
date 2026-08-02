@@ -1,6 +1,6 @@
 import { isCycleDeclined, type ChargeCredentials } from "@quartermaster/prava-client";
 import type { Verdict } from "mandate-arbiter";
-import { insertTraceEvent, db, setRunState } from "./db";
+import { insertTraceEvent, db, setRunState, traceEventsSince } from "./db";
 import { buildEscalator } from "./escalation-flow";
 import type { EnvelopeRow } from "./envelopes";
 import { MERCHANT } from "./merchant";
@@ -29,6 +29,15 @@ interface OrderResponse {
   environment: string;
 }
 
+function countChargeAttempts(runId: string): number {
+  let n = 0;
+  for (const row of traceEventsSince(runId, 0)) {
+    const t = (JSON.parse(row.body) as { type?: string }).type;
+    if (t === "charge_created" || t === "charge_failed" || t === "charge_error") n++;
+  }
+  return n;
+}
+
 /**
  * Code-only settlement after an EXECUTE verdict. The router selects
  * funding; the network mints the credential; agent B is paid; the charge
@@ -53,12 +62,25 @@ export async function settleRun(
   const mode = settlementMode();
   const envelope = routeCharge(runId, quote.amountCents, MERCHANT.name);
 
-  const reference = `${runId}-${quoteId}`;
-  const charge = await prava().chargeMandate(
-    envelope.prava_mandate_id,
-    quote.amountCents,
-    reference
-  );
+  // The sandbox does not always clear a FAILED charge's idempotency key
+  // (DUPLICATE_RESOURCE observed), so each retry derives a unique
+  // reference; any single attempt still deduplicates under its own key.
+  const priorAttempts = countChargeAttempts(runId);
+  const reference =
+    `${runId}-${quoteId}` + (priorAttempts > 0 ? `-r${priorAttempts + 1}` : "");
+
+  let charge;
+  try {
+    charge = await prava().chargeMandate(
+      envelope.prava_mandate_id,
+      quote.amountCents,
+      reference
+    );
+  } catch (err) {
+    insertTraceEvent(runId, { type: "charge_error", reference, error: String(err) });
+    setRunState(runId, "settlement_failed");
+    throw err;
+  }
 
   if (charge.status !== "awaiting_result" || !charge.credentials) {
     if (isCycleDeclined(charge)) {
@@ -73,6 +95,7 @@ export async function settleRun(
     } else {
       insertTraceEvent(runId, {
         type: "charge_failed",
+        reference,
         errorCode: charge.errorCode,
         errorMessage: charge.errorMessage,
       });

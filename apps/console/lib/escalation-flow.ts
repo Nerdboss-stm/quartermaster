@@ -1,6 +1,7 @@
 import {
   ConsoleEscalator,
   CORRECTION_MESSAGE,
+  escalationText,
   LinqEscalator,
   parseReply,
   type Escalation,
@@ -75,6 +76,10 @@ export async function raiseEscalation(
     quoteId,
     failingDetail,
     options: e.options,
+    // The literal outbound message, so the console transcript shows what
+    // the owner actually received rather than a paraphrase.
+    text: escalationText(e),
+    toLast4: process.env.DEMO_PHONE_LAST4 ?? null,
   });
   await buildEscalator(runId).sendEscalation(e);
 }

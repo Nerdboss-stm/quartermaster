@@ -21,6 +21,7 @@ export interface Order {
   amountCents: number;
   tokenLast4: string;
   createdAt: string;
+  provisioning: { at: string; line: string }[];
 }
 
 export function parseOrderRequest(body: unknown): OrderRequest | null {
@@ -58,12 +59,27 @@ export function parseOrderRequest(body: unknown): OrderRequest | null {
 }
 
 export function createOrder(req: OrderRequest): Order {
+  const orderRef = `ord_${randomUUID().slice(0, 12)}`;
+  const now = new Date();
+  // Beat 10. Agent B is the merchant: it reports what it did, and the
+  // console renders those lines verbatim rather than inventing them.
+  const provisioning = [
+    `order ${orderRef} accepted, payment captured`,
+    `allocating node gpu-${randomUUID().slice(0, 4)} for ${req.quoteId}`,
+    `container image pytorch-2.4-cuda12.4 pulled`,
+    `endpoint live, handing off to buyer job`,
+  ].map((line, i) => ({
+    at: new Date(now.getTime() + i).toISOString(),
+    line,
+  }));
+
   return {
-    orderRef: `ord_${randomUUID().slice(0, 12)}`,
+    orderRef,
     status: "paid",
     environment: "SANDBOX",
     amountCents: req.amountCents,
     tokenLast4: req.credential.token.slice(-4),
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
+    provisioning,
   };
 }

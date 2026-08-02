@@ -27,6 +27,7 @@ interface OrderResponse {
   orderRef: string;
   status: string;
   environment: string;
+  provisioning?: { at: string; line: string }[];
 }
 
 function countChargeAttempts(runId: string): number {
@@ -225,5 +226,14 @@ async function settleSandbox(
     orderRef: order.orderRef,
     environment: order.environment,
   });
+  // Beat 10: the merchant's own provisioning log, echoed verbatim.
+  for (const entry of order.provisioning ?? []) {
+    insertTraceEvent(runId, {
+      type: "provisioning",
+      orderRef: order.orderRef,
+      line: entry.line,
+      merchantAt: entry.at,
+    });
+  }
   return order.orderRef;
 }

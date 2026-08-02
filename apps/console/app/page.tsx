@@ -1,7 +1,7 @@
-// Side-effect imports prove workspace packages resolve by name; both are
-// empty until product code lands.
+// Side-effect imports prove workspace packages resolve by name.
 import "@quartermaster/escalation";
 import "@quartermaster/prava-client";
+import "mandate-arbiter";
 
 function RegionLabel({ children }: { children: string }) {
   return (

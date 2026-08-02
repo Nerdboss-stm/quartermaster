@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     `\n*** PASSKEY REQUIRED *** approve Envelope ${label} (team card ...2226, enrolled Chrome). Waiting...\n    ${approvalUrl}\n`
   );
   const mandate = await awaitNewMandate(known);
-  const row = storeEnvelope(label, mandate);
+  const row = await storeEnvelope(label, mandate);
   console.log(
     `envelope ${label}: ${row.id} prava=${mandate.id} merchant=${row.merchant_name} cap=${usd(row.per_charge_cap_cents)}/charge renews=${row.renews_at}`
   );

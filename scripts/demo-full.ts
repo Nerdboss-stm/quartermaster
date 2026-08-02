@@ -10,7 +10,7 @@ try {
 
 import { runBuyerAgent } from "../apps/console/lib/agent-a";
 import { amendActiveMandate } from "../apps/console/lib/amendments";
-import { db, insertTraceEvent, setRunState, upsertOffer } from "../apps/console/lib/db";
+import { insertTraceEvent, setRunState, sqlAll, upsertOffer } from "../apps/console/lib/db";
 import {
   awaitNewMandate,
   createEnvelopeSession,
@@ -48,7 +48,7 @@ async function ensureEnvelope(
   label: EnvelopeLabel,
   touchNo: number
 ): Promise<EnvelopeRow> {
-  const reusable = findReusableEnvelope(label);
+  const reusable = await findReusableEnvelope(label);
   if (reusable) {
     console.log(
       `envelope ${label}: reusing unused ${reusable.id} (${reusable.prava_mandate_id}, cycle open)`
@@ -62,7 +62,7 @@ async function ensureEnvelope(
     `Passkey-approve Envelope ${label} (team card ...2226, enrolled Chrome). Waiting...\n    ${approvalUrl}`
   );
   const mandate = await awaitNewMandate(known);
-  const row = storeEnvelope(label, mandate);
+  const row = await storeEnvelope(label, mandate);
   console.log(
     `envelope ${label}: ${row.id} prava=${mandate.id} merchant=${row.merchant_name} cap=${usd(row.per_charge_cap_cents)}/charge renews=${row.renews_at}`
   );
@@ -71,12 +71,12 @@ async function ensureEnvelope(
 
 async function main(): Promise<void> {
   execSync("pnpm db:migrate", { cwd: root, stdio: "inherit" });
-  console.log(`policy mandate: ${seedPolicyMandate()}`);
+  console.log(`policy mandate: ${await seedPolicyMandate()}`);
 
   const offer = OfferSchema.parse(
     await (await fetch(`${AGENT_B_URL}/offer`)).json()
   );
-  upsertOffer(offer.id, offer.agentId, offer);
+  await upsertOffer(offer.id, offer.agentId, offer);
 
   if (REHEARSE) {
     console.log(
@@ -114,18 +114,18 @@ async function main(): Promise<void> {
   );
 
   if (reply.action === "decline") {
-    setRunState(runId, "declined_by_owner");
-    insertTraceEvent(runId, { type: "owner_declined" });
+    await setRunState(runId, "declined_by_owner");
+    await insertTraceEvent(runId, { type: "owner_declined" });
     console.log("owner declined; the money never moves. Run ends.");
     return;
   }
 
   beat(8, "Amendment. NEW signed mandate supersedes the old. Re-evaluate");
-  const quote = findQuote(runId, quoteId);
+  const quote = await findQuote(runId, quoteId);
   if (!quote) throw new Error("quote vanished from trace: failing closed");
   // APPROVE = raise the cap to exactly this quote, recorded as an amendment.
   const newCap = reply.action === "raise_cap" ? reply.newCapCents! : quote.amountCents;
-  const { oldId, newId } = amendActiveMandate(runId, newCap, `owner reply: ${reply.action}`);
+  const { oldId, newId } = await amendActiveMandate(runId, newCap, `owner reply: ${reply.action}`);
   console.log(`amended: ${oldId} -> ${newId} (amount_cap now ${usd(newCap)})`);
   const verdict2 = await evaluateQuote(runId, quoteId);
   console.log(`re-eval: ${verdict2.decision}`);
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   if (REHEARSE) {
     // Restore the seed policy cap so the next real run refuses at beat 6.
     // Mandates are immutable: the restore is itself a superseding amendment.
-    const reset = amendActiveMandate(
+    const reset = await amendActiveMandate(
       runId,
       POLICY_AMOUNT_CAP_CENTS,
       "rehearsal reset: restore policy cap"
@@ -160,8 +160,8 @@ async function main(): Promise<void> {
   await runSecondNeed();
 
   beat(12, "The ledger and the audit trail. Every cent attributed");
-  printLedger();
-  printMeter();
+  await printLedger();
+  await printMeter();
 }
 
 main().catch((err) => {

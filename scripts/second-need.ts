@@ -36,7 +36,7 @@ export async function runSecondNeed(): Promise<void> {
     autonomous: true,
   });
   console.log(`settled autonomously [NO HUMAN IN LOOP]: ${s.receiptText}`);
-  const meter = portfolioMeter();
+  const meter = await portfolioMeter();
   console.log(
     `portfolio: ${usd(meter.portfolio.spent_cents)} of ${usd(meter.portfolio.cap_cents)} this cycle`
   );

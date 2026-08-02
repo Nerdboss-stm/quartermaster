@@ -1,13 +1,11 @@
-import { db } from "../apps/console/lib/db";
+import { sqlAll } from "../apps/console/lib/db";
 import { usd } from "../apps/console/lib/money";
 import { portfolioMeter } from "../apps/console/lib/portfolio";
 
-export function printLedger(): void {
-  const rows = db()
-    .prepare(
-      "SELECT id, run_id, mandate_id, envelope_id, entry_type, autonomous, amount_cents, currency, mode, prava_txn_id, merchant_ref, at FROM ledger ORDER BY id"
-    )
-    .all() as Record<string, unknown>[];
+export async function printLedger(): Promise<void> {
+  const rows = await sqlAll<Record<string, unknown>>(
+    "SELECT id, run_id, mandate_id, envelope_id, entry_type, autonomous, amount_cents, currency, mode, prava_txn_id, merchant_ref, at FROM ledger ORDER BY id"
+  );
   console.log("\nLEDGER");
   for (const r of rows) {
     console.log(
@@ -27,8 +25,8 @@ export function printLedger(): void {
   }
 }
 
-export function printMeter(): void {
-  const meter = portfolioMeter();
+export async function printMeter(): Promise<void> {
+  const meter = await portfolioMeter();
   console.log(`\nPORTFOLIO [${meter.environment}]`);
   for (const e of meter.envelopes) {
     console.log(

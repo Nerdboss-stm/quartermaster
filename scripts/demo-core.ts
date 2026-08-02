@@ -21,13 +21,13 @@ async function main() {
   console.log("demo-core: applying migrations");
   execSync("pnpm db:migrate", { cwd: root, stdio: "inherit" });
 
-  console.log(`demo-core: mandate ${seedPolicyMandate()} (${POLICY_MANDATE_ID})`);
+  console.log(`demo-core: mandate ${await seedPolicyMandate()} (${POLICY_MANDATE_ID})`);
 
   console.log(`demo-core: fetching offer from ${AGENT_B_URL}/offer`);
   const res = await fetch(`${AGENT_B_URL}/offer`);
   if (!res.ok) throw new Error(`offer fetch failed: ${res.status}`);
   const offer = OfferSchema.parse(await res.json());
-  upsertOffer(offer.id, offer.agentId, offer);
+  await upsertOffer(offer.id, offer.agentId, offer);
   console.log(`demo-core: offer ${offer.id} registered from ${offer.agentId}`);
 
   const need = demoNeed();

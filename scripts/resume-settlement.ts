@@ -8,7 +8,7 @@ try {
 }
 
 import type { Verdict } from "mandate-arbiter";
-import { db } from "../apps/console/lib/db";
+import { sqlAll } from "../apps/console/lib/db";
 import { usd } from "../apps/console/lib/money";
 import { settleRun } from "../apps/console/lib/settlement";
 import { runSecondNeed } from "./second-need";
@@ -25,9 +25,10 @@ async function main(): Promise<void> {
   const runId = process.argv[2];
   if (!runId) throw new Error("usage: resume-settlement.ts <runId>");
 
-  const rows = db()
-    .prepare("SELECT body FROM trace_events WHERE run_id = ? ORDER BY id DESC")
-    .all(runId) as { body: string }[];
+  const rows = await sqlAll<{ body: string }>(
+    "SELECT body FROM trace_events WHERE run_id = ? ORDER BY id DESC",
+    [runId]
+  );
   let verdict: Verdict | null = null;
   for (const row of rows) {
     const body = JSON.parse(row.body) as { type?: string; verdict?: Verdict };
@@ -55,8 +56,8 @@ async function main(): Promise<void> {
   }
 
   console.log("\n=== BEAT 12: The ledger and the portfolio meter ===");
-  printLedger();
-  printMeter();
+  await printLedger();
+  await printMeter();
 }
 
 main().catch((err) => {

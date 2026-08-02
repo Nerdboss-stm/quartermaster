@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 const BUY = [
   { href: "/app", label: "Overview" },
   { href: "/app/needs", label: "Needs" },
+  { href: "/app/market", label: "Market" },
   { href: "/app/runs", label: "Runs" },
   { href: "/app/portfolio", label: "Spending power" },
   { href: "/app/policy", label: "Policy" },

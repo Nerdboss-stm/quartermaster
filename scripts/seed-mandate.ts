@@ -9,6 +9,7 @@ try {
 }
 
 import { sqlAll, sqlGet, sqlRun } from "../apps/console/lib/db";
+import { DEMO_OWNER } from "../apps/console/lib/tenant";
 
 export const POLICY_MANDATE_ID = "qm_mdt_policy_v1";
 export const POLICY_AMOUNT_CAP_CENTS = 4000;
@@ -52,13 +53,18 @@ interface MandateRow {
  * expired. Mandates are immutable, so a refresh is a NEW mandate that
  * supersedes the old one and keeps the supersede chain intact — the same
  * rule amendments follow, so cumulative spend is never reset.
+ *
+ * Every statement here is scoped to the demo owner. Other accounts —
+ * suppliers, guests, anyone who signed up — carry their own active mandate,
+ * and this script must neither count them nor supersede them.
  */
 export async function seedPolicyMandate(): Promise<
   "inserted" | "exists" | "reissued"
 > {
   const now = new Date();
   const active = await sqlAll<MandateRow>(
-    "SELECT id, body FROM mandates WHERE status = 'active'"
+    "SELECT id, body FROM mandates WHERE status = 'active' AND owner_id = ?",
+    [DEMO_OWNER]
   );
 
   if (active.length === 0) {
@@ -71,11 +77,12 @@ export async function seedPolicyMandate(): Promise<
       return reissue(now);
     }
     await sqlRun(
-      "INSERT INTO mandates (id, body, status, supersedes, created_at) VALUES (?, ?, 'active', NULL, ?)",
+      "INSERT INTO mandates (id, body, status, supersedes, created_at, owner_id) VALUES (?, ?, 'active', NULL, ?, ?)",
       [
         POLICY_MANDATE_ID,
         JSON.stringify(policyMandate(POLICY_MANDATE_ID, now)),
         now.toISOString(),
+        DEMO_OWNER,
       ]
     );
     return "inserted";
@@ -83,7 +90,7 @@ export async function seedPolicyMandate(): Promise<
 
   if (active.length > 1) {
     throw new Error(
-      `${active.length} active mandates: refusing to guess which is authoritative`
+      `${active.length} active mandates for ${DEMO_OWNER}: refusing to guess which is authoritative`
     );
   }
 
@@ -93,20 +100,28 @@ export async function seedPolicyMandate(): Promise<
 }
 
 async function reissue(now: Date): Promise<"reissued"> {
-  const rows = await sqlAll<{ id: string }>("SELECT id FROM mandates");
+  const rows = await sqlAll<{ id: string }>(
+    "SELECT id FROM mandates WHERE owner_id = ?",
+    [DEMO_OWNER]
+  );
   const nextId = `qm_mdt_policy_v${rows.length + 1}`;
   const previous = await sqlGet<{ id: string }>(
-    "SELECT id FROM mandates WHERE status = 'active' ORDER BY created_at DESC LIMIT 1"
+    "SELECT id FROM mandates WHERE status = 'active' AND owner_id = ? ORDER BY created_at DESC LIMIT 1",
+    [DEMO_OWNER]
   );
 
-  await sqlRun("UPDATE mandates SET status = 'superseded' WHERE status = 'active'");
   await sqlRun(
-    "INSERT INTO mandates (id, body, status, supersedes, created_at) VALUES (?, ?, 'active', ?, ?)",
+    "UPDATE mandates SET status = 'superseded' WHERE status = 'active' AND owner_id = ?",
+    [DEMO_OWNER]
+  );
+  await sqlRun(
+    "INSERT INTO mandates (id, body, status, supersedes, created_at, owner_id) VALUES (?, ?, 'active', ?, ?, ?)",
     [
       nextId,
       JSON.stringify(policyMandate(nextId, now)),
       previous?.id ?? null,
       now.toISOString(),
+      DEMO_OWNER,
     ]
   );
   console.log(

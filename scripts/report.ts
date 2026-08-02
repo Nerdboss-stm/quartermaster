@@ -5,7 +5,8 @@ import { DEMO_OWNER } from "../apps/console/lib/tenant";
 
 export async function printLedger(): Promise<void> {
   const rows = await sqlAll<Record<string, unknown>>(
-    "SELECT id, run_id, mandate_id, envelope_id, entry_type, autonomous, amount_cents, currency, mode, prava_txn_id, merchant_ref, at FROM ledger ORDER BY id"
+    "SELECT id, run_id, mandate_id, envelope_id, entry_type, autonomous, amount_cents, currency, mode, prava_txn_id, merchant_ref, at FROM ledger WHERE owner_id = ? ORDER BY id",
+    [DEMO_OWNER]
   );
   console.log("\nLEDGER");
   for (const r of rows) {

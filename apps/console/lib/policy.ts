@@ -1,4 +1,4 @@
-import type { Mandate } from "mandate-arbiter";
+import type { Clause, Mandate } from "mandate-arbiter";
 import { sqlRun } from "./db";
 
 export interface PolicyOptions {
@@ -63,6 +63,59 @@ export function buildPolicyMandate(
       issuedAt.getTime() + o.validDays * 86_400_000
     ).toISOString(),
   };
+}
+
+export interface PolicySummary {
+  perChargeCapCents: number | null;
+  cumulativeCapCents: number | null;
+  minVramGb: number | null;
+  maxDurationH: number | null;
+  counterpartyIds: string[] | null;
+}
+
+/**
+ * Reads the caps back out of a signed clause tree so a person can see
+ * their own policy in plain numbers. Read-only: the arbiter still walks
+ * the tree itself, and this never becomes the thing that decides.
+ */
+export function summarizePolicy(root: Clause): PolicySummary {
+  const found: PolicySummary = {
+    perChargeCapCents: null,
+    cumulativeCapCents: null,
+    minVramGb: null,
+    maxDurationH: null,
+    counterpartyIds: null,
+  };
+
+  const walk = (clause: Clause) => {
+    switch (clause.kind) {
+      case "all_of":
+      case "any_of":
+        clause.clauses.forEach(walk);
+        return;
+      case "amount_cap":
+        found.perChargeCapCents ??= clause.maxCents;
+        return;
+      case "cumulative_cap":
+        found.cumulativeCapCents ??= clause.maxCents;
+        return;
+      case "counterparty_allowlist":
+        found.counterpartyIds ??= clause.ids;
+        return;
+      case "attribute":
+        if (clause.key === "vram_gb" && typeof clause.value === "number") {
+          found.minVramGb ??= clause.value;
+        }
+        if (clause.key === "duration_h" && typeof clause.value === "number") {
+          found.maxDurationH ??= clause.value;
+        }
+        return;
+      default:
+    }
+  };
+
+  walk(root);
+  return found;
 }
 
 /** Issues the first mandate for a new account. */

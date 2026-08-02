@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { sqlAll } from "@/lib/db";
+import { DEMO_OWNER } from "@/lib/tenant";
 import { Amount, Badge, Mono, Stamp } from "./_ui/primitives";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +17,16 @@ export default async function Landing({
   if (await currentUser()) redirect("/app");
 
   // The showcase is real history, not a mock: published runs and settled
-  // charges, openable by anyone.
+  // charges, openable by anyone. It is the demo account's own history —
+  // a stranger's spending never appears on a public page.
   const [shared, settled] = await Promise.all([
     sqlAll<{ id: string; state: string; created_at: string }>(
       "SELECT id, state, created_at FROM runs WHERE shared = 1 ORDER BY created_at DESC LIMIT 3"
     ),
     sqlAll<{ amount_cents: number; autonomous: number; at: string }>(
-      "SELECT amount_cents, autonomous, at FROM ledger WHERE entry_type = 'spend' ORDER BY id DESC LIMIT 3"
+      `SELECT amount_cents, autonomous, at FROM ledger
+       WHERE entry_type = 'spend' AND owner_id = ? ORDER BY id DESC LIMIT 3`,
+      [DEMO_OWNER]
     ),
   ]);
 

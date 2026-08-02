@@ -90,7 +90,17 @@ async function demo(action: string, extra: Record<string, unknown> = {}) {
   return data;
 }
 
-export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
+export default function ConsoleRoot({
+  replayId,
+  pinnedRunId = null,
+  chrome = true,
+}: {
+  replayId: string | null;
+  /** Follow one specific run instead of whatever is newest. */
+  pinnedRunId?: string | null;
+  /** The operator controller belongs to the console, not to product pages. */
+  chrome?: boolean;
+}) {
   const [state, setState] = useState<ConsoleState>(initialState);
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
@@ -197,8 +207,11 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
 
     const follow = async () => {
       try {
-        const res = await fetch("/api/runs/latest", { cache: "no-store" });
-        const data = (await res.json()) as { id: string | null };
+        const data = pinnedRunId
+          ? { id: pinnedRunId }
+          : ((await (
+              await fetch("/api/runs/latest", { cache: "no-store" })
+            ).json()) as { id: string | null });
         if (!active || !data.id) return;
 
         if (data.id !== current) {
@@ -226,7 +239,7 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
       clearInterval(interval);
       source?.close();
     };
-  }, [feed, replayId, clearView, feedEpoch]);
+  }, [feed, replayId, clearView, feedEpoch, pinnedRunId]);
 
   useEffect(() => {
     void refreshSide();
@@ -383,18 +396,20 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
             if (runId) window.location.href = `/api/runs/${runId}/bundle.json`;
           }}
         />
-        <Controller
-          steps={steps}
-          muted={muted}
-          onToggleMute={toggleMute}
-          armed={typeof window !== "undefined" && !!demoToken()}
-          onForgetToken={() => {
-            forgetDemoToken();
-            window.location.reload();
-          }}
-          onReset={resetView}
-          replayId={replayId}
-        />
+        {chrome ? (
+          <Controller
+            steps={steps}
+            muted={muted}
+            onToggleMute={toggleMute}
+            armed={typeof window !== "undefined" && !!demoToken()}
+            onForgetToken={() => {
+              forgetDemoToken();
+              window.location.reload();
+            }}
+            onReset={resetView}
+            replayId={replayId}
+          />
+        ) : null}
       </section>
     </main>
   );

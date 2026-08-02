@@ -1,12 +1,18 @@
 import { buildBundle } from "@/lib/bundle";
 
+import { canReadRun } from "@/lib/run-access";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
+  if (!(await canReadRun(req, params.id))) {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+
   try {
     const bundle = await buildBundle(params.id);
     if (!bundle) {

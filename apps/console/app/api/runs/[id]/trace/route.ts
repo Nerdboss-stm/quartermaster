@@ -1,5 +1,7 @@
 import { traceEventsSince } from "@/lib/db";
 
+import { canReadRun } from "@/lib/run-access";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,10 @@ export async function GET(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  if (!(await canReadRun(req, params.id))) {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+
   try {
     // ?after=<id> makes this a cursor endpoint. Short polling costs far
     // less on serverless than holding an SSE function open per viewer.

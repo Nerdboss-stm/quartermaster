@@ -13,3 +13,4 @@ nanda-adapter/.venv/
 nanda-adapter/**/__pycache__/
 nanda-adapter/.pytest_cache/
 nanda-adapter/*.egg-info/
+nanda-adapter/traces/output.jsonl

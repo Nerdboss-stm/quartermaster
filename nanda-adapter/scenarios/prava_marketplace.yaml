@@ -1,21 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
-# Prava marketplace: buyers pay sellers with REAL Prava sandbox money,
-# bounded by a human-granted envelope portfolio.
+# Prava commerce: buyers settle REAL Prava sandbox charges, bounded by a
+# human-granted envelope portfolio.
 #
 # BEFORE RUNNING:
-#   1. Start a Quartermaster console (it holds the arbiter, router, ledger)
-#      and export QUARTERMASTER_CONSOLE_URL if it is not on localhost:3000.
+#   1. Start a Quartermaster console (it holds the arbiter, router and
+#      ledger) and export QUARTERMASTER_CONSOLE_URL if it is not on
+#      localhost:3000.
 #   2. The owner approves at least one ENVELOPE with a passkey. This is a
-#      human action and is never automated. One charge per envelope per
-#      weekly cycle is enforced by the Visa network, so approve as many
-#      envelopes as the run needs concurrent charges.
+#      human action and is never automated. Visa enforces one charge per
+#      envelope per weekly cycle, so approve as many envelopes as the run
+#      needs concurrent charges.
 #
-# Every charge is evaluated by the deterministic mandate arbiter first.
-# Refusals surface as PravaPaymentError with the failing clause path;
-# they are the expected outcome when a quote exceeds policy, and they
-# consume no sandbox transactions.
+# buyer-0 asks for a service priced inside policy and settles.
+# buyer-1 asks for one priced above the per-charge cap: the arbiter
+# refuses it, no Prava call is made, and the refusal is the point.
 name: prava_marketplace
-description: "Buyers and sellers settling real Prava sandbox charges under a policy mandate."
+description: "Buyers settling real Prava sandbox charges under a policy mandate, including a refusal."
 
 tier: 1
 seed: 42
@@ -28,6 +28,13 @@ agents:
       count: 2
     - name: seller
       count: 2
+
+task:
+  type: policy_commerce
+  config:
+    services:
+      - gpu-compute-small
+      - gpu-compute-xl
 
 layers:
   transport: in_memory

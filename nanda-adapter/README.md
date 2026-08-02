@@ -138,6 +138,30 @@ QUARTERMASTER_CONSOLE_URL=http://localhost:3000 pytest -v   # + live sandbox
   envelope with cycle capacity; the failure case costs **zero**. Ids for
   each run are written to `sandbox-evidence.json`.
 
+## Scenario run
+
+`scenarios/prava_marketplace.yaml` drives the `policy_commerce` scenario
+(in `nest_plugin_prava/scenario.py`), which is layer-agnostic: it runs
+against `prepaid_credits` with no console and no money, and against
+`prava` for real settlement.
+
+```bash
+QUARTERMASTER_CONSOLE_URL=http://localhost:3000 nest run scenarios/prava_marketplace.yaml
+nest inspect traces/output.jsonl
+```
+
+Two buyers, two outcomes, one run:
+
+| Agent | Service | Outcome |
+|---|---|---|
+| `buyer-0` | `gpu-compute-small` | Settled `$18.00`, Prava txn `txn_01KZ1VWC3YVWG94VFDX1H89PK7`, envelope `env_a_1785695413265`, merchant order `ord_02d56bb3-930`, ledger `autonomous=1` |
+| `buyer-1` | `gpu-compute-xl` | Refused: `POLICY_NEEDS_HUMAN`, "amount $70.50 exceeds cap $47.00", clause `root.all_of[3]`, zero Prava calls |
+
+Trace: `traces/prava_marketplace.jsonl` (16 events).
+
+The refusal is not a failed run. It's a bounded agent doing the correct
+thing when a price exceeds what its owner authorised.
+
 ## Verified sandbox transactions
 
 Recorded by `test_sandbox_live.py` on 2 Aug 2026 against the Prava

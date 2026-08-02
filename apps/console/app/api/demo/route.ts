@@ -1,4 +1,4 @@
-import { latestRunId, db } from "@/lib/db";
+import { latestRunId, sqlAll } from "@/lib/db";
 import {
   amendAndReEvaluate,
   recordedReply,
@@ -20,10 +20,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /** Latest recorded verdict for a run (the arbiter's, never the model's). */
-function latestVerdict(runId: string): Verdict | null {
-  const rows = db()
-    .prepare("SELECT body FROM trace_events WHERE run_id = ? ORDER BY id DESC")
-    .all(runId) as { body: string }[];
+async function latestVerdict(runId: string): Promise<Verdict | null> {
+  const rows = await sqlAll<{ body: string }>(
+    "SELECT body FROM trace_events WHERE run_id = ? ORDER BY id DESC",
+    [runId]
+  );
   for (const row of rows) {
     const b = JSON.parse(row.body) as { type?: string; verdict?: Verdict };
     if (b.type === "verdict_full" && b.verdict) return b.verdict;
@@ -61,9 +62,11 @@ export async function POST(req: Request) {
           return Response.json({ error: "label must be A or B" }, { status: 400 });
         }
         const known = new Set<string>(
-          (db().prepare("SELECT prava_mandate_id FROM envelopes").all() as {
-            prava_mandate_id: string;
-          }[]).map((r) => r.prava_mandate_id)
+          (
+            await sqlAll<{ prava_mandate_id: string }>(
+              "SELECT prava_mandate_id FROM envelopes"
+            )
+          ).map((r) => r.prava_mandate_id)
         );
         const mandate = await awaitNewMandate(known, 4 * 60_000);
         const row = await storeEnvelope(label, mandate);
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
       case "amend": {
         const runId = body.runId ?? await latestRunId();
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
-        const prior = latestVerdict(runId);
+        const prior = await latestVerdict(runId);
         if (!prior) return Response.json({ error: "no verdict" }, { status: 409 });
         const verdict = await amendAndReEvaluate(runId, prior.proposalId);
         return Response.json({ decision: verdict?.decision ?? "DECLINED_BY_OWNER" });
@@ -93,7 +96,7 @@ export async function POST(req: Request) {
       case "settle": {
         const runId = body.runId ?? await latestRunId();
         if (!runId) return Response.json({ error: "no run" }, { status: 409 });
-        const verdict = latestVerdict(runId);
+        const verdict = await latestVerdict(runId);
         if (!verdict || verdict.decision !== "EXECUTE") {
           return Response.json(
             { error: `settlement requires EXECUTE, have ${verdict?.decision ?? "none"}` },

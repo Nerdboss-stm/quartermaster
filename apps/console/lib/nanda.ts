@@ -232,14 +232,16 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
       autonomous: true,
     });
     const at = new Date().toISOString();
-    db()
-      .prepare(
-        `INSERT OR REPLACE INTO nanda_payments
-         (ref, run_id, quote_id, payer, payee, amount_cents, currency, status,
-          envelope_id, prava_txn_id, merchant_ref, error_code, error_message, at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, NULL, NULL, ?)`
-      )
-      .run(
+    await sqlRun(
+      `INSERT INTO nanda_payments
+       (ref, run_id, quote_id, payer, payee, amount_cents, currency, status,
+        envelope_id, prava_txn_id, merchant_ref, error_code, error_message, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, NULL, NULL, ?)
+       ON CONFLICT (ref) DO UPDATE SET status = 'confirmed',
+         envelope_id = excluded.envelope_id, prava_txn_id = excluded.prava_txn_id,
+         merchant_ref = excluded.merchant_ref, error_code = NULL,
+         error_message = NULL, at = excluded.at`,
+      [
         input.ref,
         input.runId,
         input.quoteId,
@@ -250,8 +252,9 @@ export async function nandaPay(input: NandaPayInput): Promise<NandaPayResult> {
         settlement.envelope.id,
         settlement.transactionId,
         settlement.merchantRef,
-        at
-      );
+        at,
+      ]
+    );
     await insertTraceEvent(input.runId, {
       type: "nanda_payment_confirmed",
       ref: input.ref,
@@ -301,10 +304,11 @@ export interface NandaPaymentStatus {
 }
 
 /** Verification reads the append-only ledger, not an in-memory cache. */
-export function nandaVerify(ref: string): NandaPaymentStatus {
-  const row = db()
-    .prepare("SELECT * FROM nanda_payments WHERE ref = ?")
-    .get(ref) as Record<string, string | number | null> | undefined;
+export async function nandaVerify(ref: string): Promise<NandaPaymentStatus> {
+  const row = await sqlGet<Record<string, string | number | null>>(
+    "SELECT * FROM nanda_payments WHERE ref = ?",
+    [ref]
+  );
   if (!row) {
     return {
       ref,
@@ -322,11 +326,10 @@ export function nandaVerify(ref: string): NandaPaymentStatus {
   }
   const txnId = (row.prava_txn_id as string | null) ?? null;
   const ledgerRow = txnId
-    ? (db()
-        .prepare(
-          "SELECT id FROM ledger WHERE prava_txn_id = ? AND entry_type = 'spend'"
-        )
-        .get(txnId) as { id: number } | undefined)
+    ? await sqlGet<{ id: number }>(
+        "SELECT id FROM ledger WHERE prava_txn_id = ? AND entry_type = 'spend'",
+        [txnId]
+      )
     : undefined;
 
   return {

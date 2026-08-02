@@ -1,5 +1,5 @@
 import { LinqEscalator, verifyLinqSignature } from "@quartermaster/escalation";
-import { db } from "@/lib/db";
+import { sqlRun } from "@/lib/db";
 import { latestPendingEscalation, recordReply } from "@/lib/escalation-flow";
 
 export const runtime = "nodejs";
@@ -65,9 +65,10 @@ export async function POST(req: Request) {
 
   // At-least-once delivery: dedupe on webhook-id.
   const webhookId = req.headers.get("webhook-id")!;
-  const inserted = db()
-    .prepare("INSERT OR IGNORE INTO webhook_events (id, at) VALUES (?, ?)")
-    .run(webhookId, new Date().toISOString());
+  const inserted = await sqlRun(
+    "INSERT INTO webhook_events (id, at) VALUES (?, ?) ON CONFLICT (id) DO NOTHING",
+    [webhookId, new Date().toISOString()]
+  );
   if (inserted.changes === 0) return Response.json({ ok: true, duplicate: true });
 
   let evt: LinqEvent;

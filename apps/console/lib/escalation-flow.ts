@@ -9,7 +9,7 @@ import {
   type ParsedReply,
 } from "@quartermaster/escalation";
 import type { Verdict } from "mandate-arbiter";
-import { db, insertTraceEvent, setRunState } from "./db";
+import { insertTraceEvent, setRunState, sqlGet, sqlRun } from "./db";
 
 export function escalationChannel(): "linq" | "console" {
   const wanted = process.env.ESCALATION_CHANNEL === "console" ? "console" : "linq";
@@ -37,7 +37,8 @@ export function buildEscalator(runId: string | null): Escalator {
     });
   }
   return new ConsoleEscalator((kind, payload) => {
-    if (runId) await insertTraceEvent(runId, { type: `console_${kind}`, payload });
+    // The sink is synchronous by contract; the trace write is fire-and-forget.
+    if (runId) void insertTraceEvent(runId, { type: `console_${kind}`, payload });
     else console.log(`escalation console sink: ${kind}`, payload);
   });
 }
@@ -55,19 +56,18 @@ export async function raiseEscalation(
     failingDetail,
     options: ["APPROVE", "DECLINE", "RAISE CAP TO $X"],
   };
-  db()
-    .prepare(
-      `INSERT INTO escalations (run_id, mandate_id, quote_id, failing_detail, options, status, at)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?)`
-    )
-    .run(
+  await sqlRun(
+    `INSERT INTO escalations (run_id, mandate_id, quote_id, failing_detail, options, status, at)
+     VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+    [
       runId,
       e.mandateId,
       quoteId,
       failingDetail,
       JSON.stringify(e.options),
-      new Date().toISOString()
-    );
+      new Date().toISOString(),
+    ]
+  );
   const channel = escalationChannel();
   await insertTraceEvent(runId, {
     type: "escalation_requested",
@@ -94,37 +94,33 @@ export interface PendingEscalation {
   at: string;
 }
 
-export function latestPendingEscalation(): PendingEscalation | null {
-  return (
-    (db()
-      .prepare(
-        "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, at FROM escalations WHERE status = 'pending' ORDER BY id DESC LIMIT 1"
-      )
-      .get() as PendingEscalation | undefined) ?? null
+export async function latestPendingEscalation(): Promise<PendingEscalation | null> {
+  const row = await sqlGet<PendingEscalation>(
+    "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, at FROM escalations WHERE status = 'pending' ORDER BY id DESC LIMIT 1"
   );
+  return row ?? null;
 }
 
 /** Store a raw reply. Strict regex parse only. Unparsed rows keep the
  *  escalation pending and earn the correction message. */
-export function recordReply(
+export async function recordReply(
   runId: string,
   raw: string,
   source: "linq" | "console"
-): { parsed: ParsedReply | null; correction?: string } {
+): Promise<{ parsed: ParsedReply | null; correction?: string }> {
   const parsed = parseReply(raw);
-  db()
-    .prepare(
-      `INSERT INTO escalation_replies (run_id, raw, action, new_cap_cents, source, at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  await sqlRun(
+    `INSERT INTO escalation_replies (run_id, raw, action, new_cap_cents, source, at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
       runId,
       raw,
       parsed?.action ?? null,
       parsed?.newCapCents ?? null,
       source,
-      new Date().toISOString()
-    );
+      new Date().toISOString(),
+    ]
+  );
   await insertTraceEvent(runId, {
     type: "escalation_reply",
     raw,
@@ -132,11 +128,10 @@ export function recordReply(
     source,
   });
   if (!parsed) return { parsed: null, correction: CORRECTION_MESSAGE };
-  db()
-    .prepare(
-      "UPDATE escalations SET status = 'answered' WHERE run_id = ? AND status = 'pending'"
-    )
-    .run(runId);
+  await sqlRun(
+    "UPDATE escalations SET status = 'answered' WHERE run_id = ? AND status = 'pending'",
+    [runId]
+  );
   return { parsed };
 }
 
@@ -146,13 +141,14 @@ export async function awaitReply(
   timeoutMs = 15 * 60_000
 ): Promise<ParsedReply> {
   const deadline = Date.now() + timeoutMs;
-  const stmt = db().prepare(
-    "SELECT action, new_cap_cents FROM escalation_replies WHERE run_id = ? AND action IS NOT NULL ORDER BY id LIMIT 1"
-  );
   while (Date.now() < deadline) {
-    const row = stmt.get(runId) as
-      | { action: ParsedReply["action"]; new_cap_cents: number | null }
-      | undefined;
+    const row = await sqlGet<{
+      action: ParsedReply["action"];
+      new_cap_cents: number | null;
+    }>(
+      "SELECT action, new_cap_cents FROM escalation_replies WHERE run_id = ? AND action IS NOT NULL ORDER BY id LIMIT 1",
+      [runId]
+    );
     if (row) {
       return {
         action: row.action,

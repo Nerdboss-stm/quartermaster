@@ -20,7 +20,7 @@ export async function mandateChainIds(mandateId: string): Promise<string[]> {
   let cur: string | null = mandateId;
   while (cur && !ids.includes(cur)) {
     ids.push(cur);
-    const row = await sqlGet<{ supersedes: string | null }>(
+    const row: { supersedes: string | null } | undefined = await sqlGet(
       "SELECT supersedes FROM mandates WHERE id = ?",
       [cur]
     );

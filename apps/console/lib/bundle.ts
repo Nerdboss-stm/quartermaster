@@ -1,5 +1,5 @@
 import type { Mandate } from "mandate-arbiter";
-import { db } from "./db";
+import { sqlAll, sqlGet } from "./db";
 import { mandateChainIds } from "./mandates";
 import { settlementMode } from "./prava";
 
@@ -28,27 +28,28 @@ export interface AuditBundle {
 
 /** Self-contained, replayable evidence for one run. Judges can diff this
  *  against the on-screen cascade: same ids, same order, same timings. */
-export function buildBundle(runId: string): AuditBundle | null {
-  const run = db()
-    .prepare("SELECT id, state, created_at FROM runs WHERE id = ?")
-    .get(runId) as { id: string; state: string; created_at: string } | undefined;
+export async function buildBundle(runId: string): Promise<AuditBundle | null> {
+  const run = await sqlGet<{ id: string; state: string; created_at: string }>(
+    "SELECT id, state, created_at FROM runs WHERE id = ?",
+    [runId]
+  );
   if (!run) return null;
 
   const trace = (
-    db()
-      .prepare(
-        "SELECT id, at, body FROM trace_events WHERE run_id = ? ORDER BY id"
-      )
-      .all(runId) as { id: number; at: string; body: string }[]
+    await sqlAll<{ id: number; at: string; body: string }>(
+      "SELECT id, at, body FROM trace_events WHERE run_id = ? ORDER BY id",
+      [runId]
+    )
   ).map((r) => ({
     id: r.id,
     at: r.at,
     body: JSON.parse(r.body) as Record<string, unknown>,
   }));
 
-  const ledger = db()
-    .prepare("SELECT * FROM ledger WHERE run_id = ? ORDER BY id")
-    .all(runId) as Record<string, unknown>[];
+  const ledger = await sqlAll<Record<string, unknown>>(
+    "SELECT * FROM ledger WHERE run_id = ? ORDER BY id",
+    [runId]
+  );
 
   // Mandate chain: start from whatever mandate this run actually used.
   const mandateIds = new Set<string>();
@@ -63,31 +64,31 @@ export function buildBundle(runId: string): AuditBundle | null {
   for (const id of mandateIds) {
     for (const linked of await mandateChainIds(id)) chainIds.add(linked);
   }
-  const policyMandateChain = [...chainIds]
-    .map((id) => {
-      const row = db()
-        .prepare(
-          "SELECT id, body, status, supersedes, created_at FROM mandates WHERE id = ?"
-        )
-        .get(id) as
-        | {
-            id: string;
-            body: string;
-            status: string;
-            supersedes: string | null;
-            created_at: string;
-          }
-        | undefined;
-      return row
-        ? {
-            id: row.id,
-            status: row.status,
-            supersedes: row.supersedes,
-            created_at: row.created_at,
-            body: JSON.parse(row.body) as Mandate,
-          }
-        : null;
-    })
+  const policyMandateChain = (
+    await Promise.all(
+      [...chainIds].map(async (id) => {
+        const row = await sqlGet<{
+          id: string;
+          body: string;
+          status: string;
+          supersedes: string | null;
+          created_at: string;
+        }>(
+          "SELECT id, body, status, supersedes, created_at FROM mandates WHERE id = ?",
+          [id]
+        );
+        return row
+          ? {
+              id: row.id,
+              status: row.status,
+              supersedes: row.supersedes,
+              created_at: row.created_at,
+              body: JSON.parse(row.body) as Mandate,
+            }
+          : null;
+      })
+    )
+  )
     .filter((m): m is NonNullable<typeof m> => m !== null)
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
@@ -98,14 +99,16 @@ export function buildBundle(runId: string): AuditBundle | null {
     const b = e.body as { type?: string; envelopeId?: string };
     if (b.type === "route_selected" && b.envelopeId) envelopeIds.add(b.envelopeId);
   }
-  const envelopes = [...envelopeIds]
-    .map(
-      (id) =>
-        db().prepare("SELECT * FROM envelopes WHERE id = ?").get(id) as
-          | Record<string, unknown>
-          | undefined
+  const envelopes = (
+    await Promise.all(
+      [...envelopeIds].map((id) =>
+        sqlGet<Record<string, unknown>>(
+          "SELECT * FROM envelopes WHERE id = ?",
+          [id]
+        )
+      )
     )
-    .filter((e): e is Record<string, unknown> => !!e);
+  ).filter((e): e is Record<string, unknown> => !!e);
 
   const routingDecisions = trace
     .filter((e) => {

@@ -1,6 +1,6 @@
 import { isCycleDeclined, type ChargeCredentials } from "@quartermaster/prava-client";
 import type { Verdict } from "mandate-arbiter";
-import { insertTraceEvent, db, setRunState, traceEventsSince } from "./db";
+import { insertTraceEvent, setRunState, sqlRun, traceEventsSince } from "./db";
 import { buildEscalator } from "./escalation-flow";
 import type { EnvelopeRow } from "./envelopes";
 import { MERCHANT } from "./merchant";
@@ -30,7 +30,7 @@ interface OrderResponse {
   provisioning?: { at: string; line: string }[];
 }
 
-function countChargeAttempts(runId: string): number {
+async function countChargeAttempts(runId: string): Promise<number> {
   let n = 0;
   for (const row of await traceEventsSince(runId, 0)) {
     const t = (JSON.parse(row.body) as { type?: string }).type;
@@ -66,7 +66,7 @@ export async function settleRun(
   // The sandbox does not always clear a FAILED charge's idempotency key
   // (DUPLICATE_RESOURCE observed), so each retry derives a unique
   // reference; any single attempt still deduplicates under its own key.
-  const priorAttempts = countChargeAttempts(runId);
+  const priorAttempts = await countChargeAttempts(runId);
   const reference =
     `${runId}-${quoteId}` + (priorAttempts > 0 ? `-r${priorAttempts + 1}` : "");
 
@@ -141,13 +141,11 @@ export async function settleRun(
   const authorizingPaths = verdict.results
     .filter((r) => r.ok)
     .map((r) => r.path);
-  db()
-    .prepare(
-      `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
-         clause_paths, amount_cents, currency, mode, prava_session_id, prava_txn_id, merchant_ref, at)
-       VALUES (?, ?, ?, 'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  await sqlRun(
+    `INSERT INTO ledger (run_id, mandate_id, envelope_id, entry_type, autonomous,
+       clause_paths, amount_cents, currency, mode, prava_session_id, prava_txn_id, merchant_ref, at)
+     VALUES (?, ?, ?, 'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
       runId,
       verdict.mandateId,
       envelope.id,
@@ -159,8 +157,9 @@ export async function settleRun(
       charge.instructionId ?? null,
       charge.transactionId,
       merchantRef,
-      new Date().toISOString()
-    );
+      new Date().toISOString(),
+    ]
+  );
 
   const meter = await portfolioMeter();
   const receiptText =

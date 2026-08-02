@@ -93,11 +93,19 @@ GAPS TO FILL FROM linq-full.md OR THE GRANTED CREDS PAGE:
   [ ] the FROM number assigned to our account
   [ ] whether a webhook subscription must be created via API or is
       configured by the organizers
-## CAPTURED WEBHOOK PAYLOAD (Jul 31, via linq webhooks listen)
-Event: message.received (api v3, webhook_version 2026-02-03)
-Reply text field: data.body
+## CAPTURED WEBHOOK PAYLOAD (Aug 2, live capture, verified in code)
+Event NAME FIELD: top-level `event_type` (NOT `event`).
+  message.received (api_version v3, webhook_version 2026-02-03)
+Reply text: data.parts[] where type=="text", value field (NOT data.body).
 Filter: data.direction == "inbound", data.chat.id == LINQ_DEMO_CHAT_ID
-Sender: data.sender_handle.handle (is_me=false)
+  demo chat.id: 7ff6ddfc-9c4a-47ca-a173-b3f825bbf6a2
+Sender: data.sender_handle.handle (is_me=false), owner +17132816664
+Signing: Standard Webhooks (webhook-id/-timestamp/-signature headers,
+  HMAC-SHA256, base64 key from whsec_, v1,<base64> compare) — VERIFIED.
+LOCAL FORWARDING: `linq webhooks listen` creates a relay subscription
+  with its OWN signing secret (session-only) -> console env
+  LINQ_WEBHOOK_SECRET_CLI. Dashboard subscription secret stays in
+  LINQ_WEBHOOK_SECRET (deployed path). The route accepts either.
 Full event list available: message.sent/received/read/delivered/failed,
 reaction.added/removed, participant.*, chat.*, typing indicators,
 phone_number.status_updated

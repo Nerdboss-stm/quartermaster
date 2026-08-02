@@ -88,7 +88,8 @@ export async function raiseEscalation(
       ownerId,
     ]
   );
-  const channel = escalationChannel(owner?.phone ?? undefined);
+  const to = ownerNumber(ownerId, owner?.phone);
+  const channel = escalationChannel(to);
   await insertTraceEvent(runId, {
     type: "escalation_requested",
     channel,
@@ -101,7 +102,26 @@ export async function raiseEscalation(
     text: escalationText(e),
     toLast4: process.env.DEMO_PHONE_LAST4 ?? null,
   });
-  await buildEscalator(runId, ownerNumber(ownerId, owner?.phone)).sendEscalation(e);
+  // Sending can fail for reasons that are nothing to do with this run —
+  // a number the messaging account is not permitted to text, an outage.
+  // The escalation is already recorded and already waiting in the inbox,
+  // so a failed send must never lose it. What it must do is stop us
+  // telling the owner we texted them when we did not.
+  let delivery: "sent" | "failed" | "console" = channel === "linq" ? "sent" : "console";
+  try {
+    await buildEscalator(runId, to).sendEscalation(e);
+  } catch (err) {
+    delivery = "failed";
+    await insertTraceEvent(runId, {
+      type: "escalation_send_failed",
+      error: String(err),
+    });
+    console.warn(`escalation for ${runId} not delivered: ${String(err)}`);
+  }
+  await sqlRun(
+    "UPDATE escalations SET delivery = ? WHERE run_id = ? AND status = 'pending'",
+    [delivery, runId]
+  );
 }
 
 export interface PendingEscalation {
@@ -111,6 +131,8 @@ export interface PendingEscalation {
   quote_id: string;
   failing_detail: string;
   options: string;
+  /** 'sent' | 'failed' | 'console'; NULL predates the column. */
+  delivery: string | null;
   at: string;
 }
 
@@ -118,7 +140,7 @@ export async function latestPendingEscalation(
   ownerId: string
 ): Promise<PendingEscalation | null> {
   const row = await sqlGet<PendingEscalation>(
-    "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, at FROM escalations WHERE status = 'pending' AND owner_id = ? ORDER BY id DESC LIMIT 1",
+    "SELECT id, run_id, mandate_id, quote_id, failing_detail, options, delivery, at FROM escalations WHERE status = 'pending' AND owner_id = ? ORDER BY id DESC LIMIT 1",
     [ownerId]
   );
   return row ?? null;

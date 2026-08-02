@@ -18,9 +18,10 @@ export default async function EscalationsPage() {
       run_id: string;
       failing_detail: string;
       status: string;
+      delivery: string | null;
       at: string;
     }>(
-      `SELECT id, run_id, failing_detail, status, at FROM escalations
+      `SELECT id, run_id, failing_detail, status, delivery, at FROM escalations
        WHERE owner_id = ? ORDER BY id DESC LIMIT 20`,
       [user.id]
     ),
@@ -38,6 +39,14 @@ export default async function EscalationsPage() {
       />
 
       <div className="flex flex-col gap-4 p-6">
+        {pending?.delivery === "failed" ? (
+          <p className="border-l-2 border-amber-500 py-1 pl-3 font-sans text-[13px] leading-relaxed text-amber-400">
+            We could not deliver the text to your number, so this is waiting
+            here instead. Answering below does exactly what replying would
+            have done.
+          </p>
+        ) : null}
+
         {pending ? (
           <Card title="Waiting on you">
             <ApprovalPanel

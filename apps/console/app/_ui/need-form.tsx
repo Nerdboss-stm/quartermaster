@@ -8,6 +8,8 @@ interface Outcome {
   state: string;
   runId?: string;
   detail?: string;
+  /** Whether the owner was actually reached. Never assume they were. */
+  delivery?: string | null;
 }
 
 /** States a need stops moving in. */
@@ -259,11 +261,16 @@ function Watching({
           const json = (await res.json()) as {
             state: string;
             runId: string | null;
+            delivery: string | null;
           };
           if (json.runId) onRunId(json.runId);
           if (TERMINAL.includes(json.state) && !settled.current) {
             settled.current = true;
-            onOutcome({ state: json.state, runId: json.runId ?? undefined });
+            onOutcome({
+              state: json.state,
+              runId: json.runId ?? undefined,
+              delivery: json.delivery,
+            });
           }
         }
       } catch {
@@ -322,9 +329,12 @@ function Result({
     },
     escalated: {
       title: "It needs you.",
-      body: hasPhone
-        ? "The price was outside your policy, so your agent stopped and texted you. Reply and it finishes on its own."
-        : "The price was outside your policy, so your agent stopped. Answer it in Approvals and it finishes on its own.",
+      body:
+        outcome.delivery === "sent"
+          ? "The price was outside your policy, so your agent stopped and texted you. Reply and it finishes on its own."
+          : outcome.delivery === "failed"
+            ? "The price was outside your policy, so your agent stopped. We could not deliver the text to your number, so answer it in Approvals — nothing is lost."
+            : "The price was outside your policy, so your agent stopped. Answer it in Approvals and it finishes on its own.",
       tone: "text-amber-400",
     },
     pending: {

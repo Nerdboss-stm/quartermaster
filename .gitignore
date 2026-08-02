@@ -8,3 +8,4 @@ db/
 .DS_Store
 *.tsbuildinfo
 npm-debug.log*
+.vercel

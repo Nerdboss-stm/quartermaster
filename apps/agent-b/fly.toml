@@ -1,12 +1,18 @@
-app = "quartermaster-agent-b"
-primary_region = "iad"
+# fly.toml app configuration file generated for quartermaster-agent-b on 2026-08-01T22:55:51-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
+app = 'quartermaster-agent-b'
+primary_region = 'iad'
+
+[build]
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
+  size = 'shared-cpu-1x'

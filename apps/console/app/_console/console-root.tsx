@@ -52,7 +52,16 @@ function demoToken(): string | null {
     return fromUrl;
   }
   try {
-    return window.localStorage.getItem(TOKEN_KEY);
+    const stored = window.localStorage.getItem(TOKEN_KEY);
+    if (stored) return stored;
+    // An earlier build kept this per-tab; migrate so a mid-take reload
+    // does not suddenly lose the controls.
+    const legacy = window.sessionStorage.getItem(TOKEN_KEY);
+    if (legacy) {
+      window.localStorage.setItem(TOKEN_KEY, legacy);
+      return legacy;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -87,6 +96,8 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [muted, setMutedState] = useState(false);
   const [runId, setRunId] = useState<string | null>(replayId);
+  // Bumped by a reset so the feed effect re-attaches from the beginning.
+  const [feedEpoch, setFeedEpoch] = useState(0);
   const seenIds = useRef(new Set<number>());
   const replayTimers = useRef<number[]>([]);
 
@@ -111,12 +122,23 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
     }
   }, []);
 
-  const resetView = useCallback(() => {
+  /** Clear the per-run panels. Used when the feed rolls onto a new run. */
+  const clearView = useCallback(() => {
     seenIds.current = new Set();
     for (const t of replayTimers.current) window.clearTimeout(t);
     replayTimers.current = [];
     setState(initialState);
   }, []);
+
+  /**
+   * The R key. Clearing state is not enough: the run id and cursor live
+   * inside the feed effect, so without re-attaching it the console would
+   * sit blank for the rest of the take.
+   */
+  const resetView = useCallback(() => {
+    clearView();
+    setFeedEpoch((n) => n + 1);
+  }, [clearView]);
 
   // Live: follow the newest run over SSE. Replay: schedule the stored
   // trace at recorded timing. Same reducer either way.
@@ -183,7 +205,7 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
           current = data.id;
           cursor = 0;
           setRunId(data.id);
-          resetView();
+          clearView();
           source?.close();
           source = null;
           if (useStream) {
@@ -204,7 +226,7 @@ export default function ConsoleRoot({ replayId }: { replayId: string | null }) {
       clearInterval(interval);
       source?.close();
     };
-  }, [feed, replayId, resetView]);
+  }, [feed, replayId, clearView, feedEpoch]);
 
   useEffect(() => {
     void refreshSide();

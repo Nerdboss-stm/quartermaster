@@ -17,15 +17,18 @@ export default async function Landing({
   if (await currentUser()) redirect("/app");
 
   // The showcase is real history, not a mock: published runs and settled
-  // charges, openable by anyone. It is the demo account's own history —
-  // a stranger's spending never appears on a public page.
+  // charges, openable by anyone. Publishing a run is the consent — a
+  // stranger's spending never reaches this page unless they chose to
+  // share the run it came from.
   const [shared, settled] = await Promise.all([
     sqlAll<{ id: string; state: string; created_at: string }>(
       "SELECT id, state, created_at FROM runs WHERE shared = 1 ORDER BY created_at DESC LIMIT 3"
     ),
     sqlAll<{ amount_cents: number; autonomous: number; at: string }>(
       `SELECT amount_cents, autonomous, at FROM ledger
-       WHERE entry_type = 'spend' AND owner_id = ? ORDER BY id DESC LIMIT 3`,
+       WHERE entry_type = 'spend'
+         AND (owner_id = ? OR run_id IN (SELECT id FROM runs WHERE shared = 1))
+       ORDER BY id DESC LIMIT 3`,
       [DEMO_OWNER]
     ),
   ]);

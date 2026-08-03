@@ -107,18 +107,34 @@ export default function EnvelopeWizard() {
           Approve envelope {label} in the window that just opened. This page
           notices by itself — you do not have to come back to it.
         </p>
-        {approvalUrl ? (
-          <a
-            href={approvalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-block border border-neutral-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-300 hover:border-neutral-500"
+        <div className="mt-4 flex flex-wrap gap-2">
+          {approvalUrl ? (
+            <a
+              href={approvalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border border-neutral-700 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-300 hover:border-neutral-500"
+            >
+              Reopen approval
+            </a>
+          ) : null}
+          {/* Closing the approval window used to leave this waiting forever
+              with no way back to the form. */}
+          <button
+            onClick={() => {
+              if (timer.current) clearInterval(timer.current);
+              setStage("idle");
+              setApprovalUrl(null);
+              setError(null);
+            }}
+            className="border border-neutral-800 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"
           >
-            Reopen approval
-          </a>
-        ) : null}
+            Start over
+          </button>
+        </div>
         <p className="mt-4 font-sans text-[12px] text-neutral-600">
-          Approval windows expire after about fifteen minutes.
+          Approval windows expire after about fifteen minutes. If you closed the
+          window, start over and a fresh one opens.
         </p>
       </div>
     );

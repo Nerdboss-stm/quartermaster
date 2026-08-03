@@ -28,29 +28,15 @@ export function agentNumber(): string | null {
 }
 
 /**
- * A sandbox test card to enroll during approval, spread across accounts so
- * two people trying this at once do not share one card's daily limit.
- * Published Prava sandbox numbers — they are declined everywhere else.
- * 7789 and 7797 are held back: the demo browser is enrolled on 7797.
+ * The sandbox card to enroll during approval. A real number on the Visa
+ * network, issued for this sandbox and declined everywhere else. It has a
+ * daily transaction limit, so it is shared by everyone trying this.
  */
-const SANDBOX_CARDS = [
-  { number: "4622 9431 2313 7805", cvv: "304" },
-  { number: "4622 9431 2313 7847", cvv: "698" },
-  { number: "4622 9431 2313 7854", cvv: "799" },
-  { number: "4622 9431 2313 7862", cvv: "938" },
-  { number: "4622 9431 2313 7870", cvv: "966" },
-  { number: "4622 9431 2313 7888", cvv: "408" },
-  { number: "4622 9431 2313 7896", cvv: "499" },
-  { number: "4622 9431 2313 7904", cvv: "890" },
-  { number: "4622 9431 2313 7912", cvv: "999" },
-];
-
-export function sandboxCardFor(ownerId: string) {
-  let hash = 0;
-  for (const ch of ownerId) hash = (hash * 31 + ch.charCodeAt(0)) % 100_000;
+export function sandboxCardFor(_ownerId: string) {
   return {
-    ...SANDBOX_CARDS[hash % SANDBOX_CARDS.length],
-    expiry: "12/27",
+    number: "4622 9431 2323 2226",
+    cvv: "738",
+    expiry: "12/30",
     otp: "456789",
   };
 }
